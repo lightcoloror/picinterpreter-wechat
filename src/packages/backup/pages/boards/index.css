@@ -1,0 +1,316 @@
+.board-management-page {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 30px 24px calc(env(safe-area-inset-bottom) + 40px);
+  color: #173a34;
+  background:
+    radial-gradient(
+      circle at 92% 2%,
+      rgba(244, 179, 65, 0.3),
+      transparent 28%
+    ),
+    linear-gradient(155deg, #fffaf0 0%, #ecf8f3 58%, #e4f0e8 100%);
+}
+
+.board-management-page__header {
+  display: flex;
+  padding: 24px 26px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-radius: 26px;
+  background: #153f36;
+  color: #fffdf6;
+}
+
+.board-management-page__eyebrow,
+.board-management-page__title,
+.board-management-section__title,
+.board-management-section__hint,
+.board-management-card__position,
+.board-management-card__name,
+.board-management-card__meta {
+  display: block;
+}
+
+.board-management-page__eyebrow {
+  color: #ffda6f;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.board-management-page__title {
+  margin-top: 4px;
+  font-size: 35px;
+  font-weight: 900;
+}
+
+.board-management-page__back {
+  width: auto;
+  min-width: 156px;
+  height: 64px;
+  margin: 0;
+  padding: 0 20px;
+  border-radius: 16px;
+  background: #ffda6f;
+  color: #153f36;
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 64px;
+}
+
+.board-management-page__back::after,
+.board-management-button::after {
+  border: 0;
+}
+
+.board-management-create,
+.board-management-list,
+.board-management-help {
+  margin-top: 20px;
+  padding: 22px;
+  border: 2px solid rgba(21, 63, 54, 0.14);
+  border-radius: 24px;
+  background: rgba(255, 253, 247, 0.94);
+}
+
+.board-management-section__title {
+  color: #153f36;
+  font-size: 27px;
+  font-weight: 900;
+}
+
+.board-management-section__hint {
+  margin-top: 6px;
+  color: #62766e;
+  font-size: 20px;
+  line-height: 1.5;
+}
+
+.board-management-create__form,
+.board-management-rename {
+  display: flex;
+  margin-top: 16px;
+  align-items: center;
+  gap: 12px;
+}
+
+.board-management-input {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 88px;
+  padding: 0 18px;
+  flex: 1;
+  border: 2px solid #9fb4ab;
+  border-radius: 16px;
+  background: #fff;
+  color: #173a34;
+  font-size: 22px;
+}
+
+.board-management-button {
+  min-width: 116px;
+  min-height: 88px;
+  height: auto;
+  margin: 0;
+  padding: 12px 18px;
+  border: 2px solid #9fb4ab;
+  border-radius: 16px;
+  background: #fff;
+  color: #173a34;
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.board-management-button--primary {
+  border-color: #153f36;
+  background: #153f36;
+  color: #fffdf6;
+}
+
+.board-management-button--danger {
+  border-color: #b42318;
+  color: #b42318;
+}
+
+.board-management-button[disabled] {
+  opacity: 0.38;
+}
+
+.board-management-notice {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border: 2px solid #ca8a04;
+  border-radius: 18px;
+  background: #fff7d6;
+  color: #67420b;
+  font-size: 20px;
+  line-height: 1.5;
+}
+
+.board-management-list__heading {
+  margin-bottom: 16px;
+}
+
+.board-management-card {
+  padding: 18px;
+  border-top: 2px solid rgba(21, 63, 54, 0.12);
+}
+
+.board-management-card:first-of-type {
+  border-top: 0;
+}
+
+.board-management-card__summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.board-management-card__position {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: 18px;
+  background: #dcece6;
+  color: #153f36;
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 56px;
+  text-align: center;
+}
+
+.board-management-card__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.board-management-card__name {
+  overflow: hidden;
+  color: #173a34;
+  font-size: 25px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-management-card__meta {
+  margin-top: 4px;
+  color: #6b7e76;
+  font-size: 19px;
+}
+
+.board-management-card__actions {
+  display: flex;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.board-management-card__actions .board-management-button {
+  min-width: 120px;
+  flex: 1;
+}
+
+.board-management-links {
+  margin-top: 16px;
+  padding: 18px;
+  border: 2px solid #9fb4ab;
+  border-radius: 18px;
+  background: #f4faf7;
+}
+
+.board-management-links__title,
+.board-management-links__label,
+.board-management-links__empty,
+.board-management-link-row__name {
+  display: block;
+}
+
+.board-management-links__title {
+  color: #153f36;
+  font-size: 23px;
+  font-weight: 900;
+}
+
+.board-management-links__group {
+  margin-top: 18px;
+}
+
+.board-management-links__label {
+  margin-bottom: 10px;
+  color: #36564e;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.board-management-links__empty {
+  color: #6b7e76;
+  font-size: 19px;
+}
+
+.board-management-link-row {
+  display: flex;
+  min-height: 88px;
+  padding: 8px 0;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid rgba(21, 63, 54, 0.12);
+}
+
+.board-management-link-row__name {
+  min-width: 0;
+  flex: 1;
+  color: #173a34;
+  font-size: 21px;
+  font-weight: 800;
+}
+
+.board-management-link-row__button {
+  min-width: 120px;
+  flex: 0 0 auto;
+}
+
+.board-management-links__choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.board-management-link-choice {
+  width: 100%;
+}
+
+.board-management-help .board-management-button {
+  width: 100%;
+  margin-top: 16px;
+}
+
+@media (max-width: 420px) {
+  .board-management-page {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .board-management-page__header,
+  .board-management-create__form,
+  .board-management-rename {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .board-management-page__back,
+  .board-management-button {
+    width: 100%;
+  }
+
+  .board-management-card__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .board-management-links__choices {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "phraseId": "help",
+      "tileId": "B1AEEA5pm5tb",
+      "file": "5083f4d4500e0f76.png"
+    },
+    {
+      "phraseId": "pain",
+      "tileId": "H15lXC96m9Yb",
+      "file": "f3127bb37aa2de32.png"
+    },
+    {
+      "phraseId": "doctor",
+      "tileId": "SJNomR5pXqtb",
+      "file": "eca6eef4d65f5f77.png"
+    },
+    {
+      "phraseId": "scared",
+      "tileId": "BymCzRcam5F-",
+      "file": "fcb594c2581d2b93.png"
+    },
+    {
+      "phraseId": "quiet",
+      "tileId": "ryiWNC5aXcYb",
+      "file": "cbf5e2a872fe5eca.png"
+    },
+    {
+      "phraseId": "water",
+      "tileId": "SystfA56X5KZ",
+      "file": "a0ba17ec2fbecc67.png"
+    }
+  ]
+}

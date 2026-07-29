@@ -1,0 +1,48 @@
+.app-update-banner {
+  position: fixed;
+  z-index: 1000;
+  top: calc(env(safe-area-inset-top) + 12px);
+  right: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 12px 14px;
+  border: 1px solid #9fc6b8;
+  border-radius: 18px;
+  background: #f6fffb;
+  box-shadow: 0 8px 24px rgba(21, 63, 54, 0.18);
+  color: #153f36;
+}
+
+.app-update-banner__message {
+  flex: 1;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.app-update-banner__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.app-update-banner__button {
+  min-width: 96px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 16px;
+  border: 1px solid #789f92;
+  border-radius: 14px;
+  background: #fff;
+  color: #153f36;
+  font-size: 24px;
+  line-height: 44px;
+}
+
+.app-update-banner__button--apply {
+  border-color: #153f36;
+  background: #153f36;
+  color: #fff;
+}

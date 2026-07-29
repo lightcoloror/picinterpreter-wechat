@@ -1,0 +1,36 @@
+{
+  "miniprogramRoot": "./dist",
+  "projectname": "cboard-wechat-poc",
+  "description": "图语家微信小程序 PoC（基于 CBoard）",
+  "appid": "wx02246603dc9a960c",
+  "packOptions": {
+    "ignore": [],
+    "include": [
+      {
+        "value": "**/assets/cboard-default/**",
+        "type": "glob"
+      },
+      {
+        "value": "**/assets/emergency/**",
+        "type": "glob"
+      },
+      {
+        "value": "**/sub-common/**",
+        "type": "glob"
+      }
+    ]
+  },
+  "setting": {
+    "urlCheck": true,
+    "es6": false,
+    "enhance": false,
+    "compileHotReLoad": false,
+    "postcss": false,
+    "minified": true,
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "ignoreDevUnusedFiles": true,
+    "ignoreUploadUnusedFiles": true
+  },
+  "compileType": "miniprogram"
+}

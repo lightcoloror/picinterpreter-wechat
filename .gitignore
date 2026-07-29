@@ -1,0 +1,10 @@
+dist/
+deploy_versions/
+.temp/
+.bundle-analysis/
+.rn_temp/
+node_modules/
+.DS_Store
+.swc
+*.local
+project.private.config.json

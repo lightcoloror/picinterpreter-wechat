@@ -1,0 +1,138 @@
+.ocr-page {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 34px 26px calc(env(safe-area-inset-bottom) + 36px);
+  color: #173a34;
+  background:
+    radial-gradient(circle at 92% 4%, rgba(244, 179, 65, 0.36), transparent 28%),
+    linear-gradient(155deg, #fffaf0 0%, #ecf8f3 58%, #e4f0e8 100%);
+}
+
+.ocr-hero {
+  padding: 22px 8px 30px;
+}
+
+.ocr-hero__eyebrow,
+.ocr-hero__title,
+.ocr-hero__description,
+.ocr-card__index,
+.ocr-card__title,
+.ocr-card__hint,
+.ocr-notice {
+  display: block;
+}
+
+.ocr-hero__eyebrow {
+  color: #a24d16;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+
+.ocr-hero__title {
+  margin-top: 12px;
+  color: #123c34;
+  font-size: 48px;
+  font-weight: 900;
+  line-height: 1.16;
+}
+
+.ocr-hero__description {
+  margin-top: 18px;
+  color: #4b655f;
+  font-size: 23px;
+  line-height: 1.65;
+}
+
+.ocr-card {
+  position: relative;
+  box-sizing: border-box;
+  margin-top: 22px;
+  padding: 30px 24px;
+  overflow: hidden;
+  border: 2px solid rgba(21, 63, 54, 0.13);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 16px 42px rgba(21, 63, 54, 0.08);
+}
+
+.ocr-card--privacy {
+  border-color: rgba(162, 77, 22, 0.24);
+  background: rgba(255, 252, 243, 0.95);
+}
+
+.ocr-card__index {
+  position: absolute;
+  top: 14px;
+  right: 22px;
+  color: rgba(21, 63, 54, 0.12);
+  font-size: 68px;
+  font-weight: 900;
+}
+
+.ocr-card__title {
+  color: #153f36;
+  font-size: 32px;
+  font-weight: 900;
+}
+
+.ocr-card__hint {
+  margin-top: 10px;
+  color: #5d706b;
+  font-size: 21px;
+  line-height: 1.55;
+}
+
+.ocr-primary,
+.ocr-back {
+  min-height: 78px;
+  margin: 22px 0 0;
+  border-radius: 20px;
+  font-size: 27px;
+  font-weight: 900;
+  line-height: 76px;
+}
+
+.ocr-primary::after,
+.ocr-back::after {
+  border: 0;
+}
+
+.ocr-primary {
+  color: #fffdf5;
+  background: #153f36;
+}
+
+.ocr-notice {
+  margin-top: 22px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  color: #28584d;
+  background: #e2f2ec;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.ocr-notice--working {
+  color: #7d390f;
+  background: #fff2d7;
+}
+
+.ocr-back {
+  width: 100%;
+  border: 2px solid #153f36;
+  color: #153f36;
+  background: transparent;
+}
+
+@media (max-width: 420px) {
+  .ocr-page {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .ocr-hero__title {
+    font-size: 42px;
+  }
+}

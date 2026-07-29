@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "toilet",
+      "file": "toilet.png",
+      "source": "cboard/public/symbols/mulberry/need_toilet.svg",
+      "sourceProject": "CBoard",
+      "provider": "Mulberry Symbols",
+      "license": "CC BY-SA 4.0",
+      "sha256": "1A618399E14B01ACEFC6D85149E2EACFD9879878F093D107EBE3C97D98C43586"
+    },
+    {
+      "id": "uncomfortable",
+      "file": "uncomfortable.png",
+      "source": "https://static.arasaac.org/pictograms/37183/37183_300.png",
+      "sourceProject": "PicInterpreter",
+      "provider": "ARASAAC",
+      "originalId": "37183",
+      "license": "CC BY-NC-SA 4.0",
+      "sha256": "F99C33A290DC45852B9B9B0D0B2383DAEB601FB4C8802A71210AC17D99C86D7D"
+    }
+  ]
+}

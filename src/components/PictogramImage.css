@@ -1,0 +1,45 @@
+.pictogram-image-fallback {
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 6px;
+  border: 2px dashed #b7791f;
+  border-radius: 12px;
+  background: #fff7dd;
+  color: #6b3d00;
+}
+
+.pictogram-image-fallback__text {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.22;
+  text-align: center;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.pictogram-image-fallback--retryable:active {
+  transform: scale(0.97);
+}
+
+.pictogram-image-fallback__retry {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.communication-page--high-contrast .pictogram-image-fallback,
+.receiver-display-page--high-contrast .pictogram-image-fallback,
+.emergency-page--high-contrast .pictogram-image-fallback {
+  border-color: #000;
+  background: #fff;
+  color: #000;
+}

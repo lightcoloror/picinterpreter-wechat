@@ -1,0 +1,141 @@
+.matching-diagnostics__notice,
+.matching-diagnostics__summary-title,
+.matching-diagnostics__summary-detail,
+.matching-diagnostics__token,
+.matching-diagnostics__match,
+.matching-diagnostics__missing {
+  display: block;
+}
+
+.matching-diagnostics__notice {
+  margin-top: 18px;
+  color: #657970;
+  font-size: 22px;
+  line-height: 1.5;
+}
+
+.matching-diagnostics__input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 150px;
+  margin-top: 16px;
+  padding: 18px;
+  border: 2px solid #a9bbb4;
+  border-radius: 20px;
+  background: #fff;
+  color: #16302b;
+  font-size: 28px;
+  line-height: 1.5;
+}
+
+.matching-diagnostics__run {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.matching-diagnostics__examples {
+  display: flex;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.matching-diagnostics__example {
+  width: auto;
+  min-height: 64px;
+  margin: 0;
+  padding: 0 16px;
+  border: 2px solid #b7c9c2;
+  border-radius: 18px;
+  background: #fff;
+  color: #153f36;
+  font-size: 21px;
+  line-height: 60px;
+}
+
+.matching-diagnostics__example::after {
+  border: 0;
+}
+
+.matching-diagnostics__summary {
+  margin-top: 20px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: #dceee7;
+}
+
+.matching-diagnostics__summary-title {
+  color: #153f36;
+  font-size: 27px;
+  font-weight: 900;
+}
+
+.matching-diagnostics__summary-detail {
+  margin-top: 4px;
+  color: #4e675f;
+  font-size: 21px;
+}
+
+.matching-diagnostics__grid {
+  display: grid;
+  margin-top: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.matching-diagnostics__item {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d1ddd8;
+  border-radius: 20px;
+  background: #fff;
+}
+
+.matching-diagnostics__image,
+.matching-diagnostics__missing-image {
+  width: 100%;
+  height: 180px;
+  border-radius: 15px;
+  background: #f8faf9;
+}
+
+.matching-diagnostics__missing-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b42318;
+  font-size: 70px;
+  font-weight: 900;
+}
+
+.matching-diagnostics__token {
+  margin-top: 8px;
+  color: #153f36;
+  font-size: 25px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.matching-diagnostics__match {
+  margin-top: 4px;
+  color: #657970;
+  font-size: 19px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.matching-diagnostics__missing {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #ffe1d6;
+  color: #7a271a;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+@media (max-width: 420px) {
+  .matching-diagnostics__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

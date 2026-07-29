@@ -71,6 +71,7 @@ import {
   taroPictureLibraryStore
 } from '../../../../platform/taroPictureLibraryStore'
 import CommunicationSettingsPanel from '../../../../features/communication/CommunicationSettingsPanel'
+import CompliancePanel from '../../../../features/compliance/CompliancePanel'
 import { runCommunicationAiConnectionTest } from '../../../../features/communication/communicationAiConnectionTest'
 import HistoryManager from '../../../../features/communication/HistoryManager'
 import MatchingDiagnosticsPanel from '../../../../features/communication/MatchingDiagnosticsPanel'
@@ -733,6 +734,7 @@ export default function CommunicationManagementPage() {
         />
       )}
       {view === 'settings' && (
+        <>
         <CommunicationSettingsPanel
           boards={boards}
           value={preferences}
@@ -786,6 +788,8 @@ export default function CommunicationManagementPage() {
           }}
           onReplayOnboarding={replayOnboarding}
         />
+        <CompliancePanel />
+        </>
       )}
     </View>
   )

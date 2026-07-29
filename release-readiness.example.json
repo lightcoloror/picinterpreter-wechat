@@ -1,0 +1,21 @@
+{
+  "formalAccountConfirmed": false,
+  "serviceCategory": "",
+  "filingNumber": "",
+  "privacyGuideConfirmed": false,
+  "wechatSiAuthorized": false,
+  "apiBaseUrl": "",
+  "apiRequestDomainConfigured": false,
+  "apiUploadDomainConfigured": false,
+  "apiDownloadDomainConfigured": false,
+  "arasaacRequestDomainConfigured": false,
+  "arasaacDownloadDomainConfigured": false,
+  "sourceCodeUrl": "",
+  "sourceCodePubliclyAccessibleConfirmed": false,
+  "bundledSymbolLicensesReviewed": false,
+  "cboardSymbolsResolved": false,
+  "commercialUse": false,
+  "arasaacCommercialUseResolved": false,
+  "realDeviceAcceptanceConfirmed": false,
+  "performanceScanConfirmed": false
+}

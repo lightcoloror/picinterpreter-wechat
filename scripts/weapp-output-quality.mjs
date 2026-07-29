@@ -1,3 +1,32 @@
+const REQUIRED_RECORD_PERMISSION_DESCRIPTION =
+  '用于用户主动语音输入和为个人图卡录制声音'
+
+export function findPrivacyPermissionIssues(permission) {
+  const declaredPermissions =
+    permission && typeof permission === 'object' ? permission : {}
+  const issues = []
+
+  for (const scope of Object.keys(declaredPermissions)) {
+    if (scope !== 'scope.record') {
+      issues.push(`unsupported permission ${scope}`)
+    }
+  }
+
+  const recordPermission = declaredPermissions['scope.record']
+  if (!recordPermission) {
+    issues.push('missing required permission scope.record')
+  } else if (
+    String(recordPermission.desc || '').trim() !==
+    REQUIRED_RECORD_PERMISSION_DESCRIPTION
+  ) {
+    issues.push(
+      'scope.record must describe active voice input and personal tile recording'
+    )
+  }
+
+  return issues
+}
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^$(){}[\]\\]/g, '\\$&')
 }

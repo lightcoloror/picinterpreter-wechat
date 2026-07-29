@@ -11,6 +11,7 @@ import {
   unexpectedSimulatorConsoleErrors
 } from './weapp-e2e-safety.mjs'
 import {
+  findPrivacyPermissionIssues,
   findUnusedDeclaredComponents,
   findWxmlDependencySources,
   hasRuntimePluginUsage
@@ -72,6 +73,32 @@ test('plugin usage requires a production runtime call with the configured name',
   assert.equal(
     hasRuntimePluginUsage('WechatSI', 'const plugin = requirePlugin(name)'),
     false
+  )
+})
+
+test('privacy permissions allow only the reviewed recording purpose', () => {
+  assert.deepEqual(
+    findPrivacyPermissionIssues({
+      'scope.record': {
+        desc: '用于用户主动语音输入和为个人图卡录制声音'
+      }
+    }),
+    []
+  )
+
+  assert.deepEqual(
+    findPrivacyPermissionIssues({
+      'scope.record': { desc: '改善体验' },
+      'scope.userLocation': { desc: '未使用' }
+    }),
+    [
+      'unsupported permission scope.userLocation',
+      'scope.record must describe active voice input and personal tile recording'
+    ]
+  )
+  assert.deepEqual(
+    findPrivacyPermissionIssues({}),
+    ['missing required permission scope.record']
   )
 })
 

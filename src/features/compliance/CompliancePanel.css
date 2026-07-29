@@ -1,0 +1,64 @@
+.compliance-panel {
+  margin-top: 24px;
+  padding: 28px;
+  border: 2px solid #bdd5ca;
+  border-radius: 24px;
+  background: #f6fffb;
+}
+
+.compliance-panel__eyebrow,
+.compliance-panel__title,
+.compliance-panel__body,
+.compliance-panel__warning {
+  display: block;
+}
+
+.compliance-panel__eyebrow {
+  color: #50766b;
+  font-size: 23px;
+  font-weight: 700;
+}
+
+.compliance-panel__title {
+  margin-top: 8px;
+  color: #153f36;
+  font-size: 32px;
+  font-weight: 800;
+}
+
+.compliance-panel__body {
+  margin-top: 14px;
+  color: #34564d;
+  font-size: 26px;
+  line-height: 1.6;
+}
+
+.compliance-panel__warning {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #fff1e8;
+  color: #8a3d14;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.compliance-panel__actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.compliance-panel__button {
+  flex: 1;
+  min-height: 70px;
+  margin: 0;
+  border: 2px solid #376b5d;
+  border-radius: 18px;
+  background: #fff;
+  color: #153f36;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 70px;
+}

@@ -8,3 +8,4 @@ node_modules/
 .swc
 *.local
 project.private.config.json
+/.release-readiness.local.json

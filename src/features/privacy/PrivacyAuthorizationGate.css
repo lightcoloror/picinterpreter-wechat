@@ -1,0 +1,90 @@
+.privacy-authorization {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(18, 35, 31, 0.66);
+}
+
+.privacy-authorization__dialog {
+  width: 100%;
+  max-width: 640px;
+  padding: 40px 36px 32px;
+  border: 2px solid #c9ddd4;
+  border-radius: 30px;
+  background: #fffdf7;
+  box-shadow: 0 24px 60px rgba(12, 35, 29, 0.28);
+}
+
+.privacy-authorization__eyebrow,
+.privacy-authorization__title,
+.privacy-authorization__body {
+  display: block;
+}
+
+.privacy-authorization__eyebrow {
+  color: #456d61;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.privacy-authorization__title {
+  margin-top: 12px;
+  color: #153f36;
+  font-size: 38px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.privacy-authorization__body {
+  margin-top: 20px;
+  color: #34564d;
+  font-size: 28px;
+  line-height: 1.65;
+}
+
+.privacy-authorization__contract {
+  margin: 24px 0 0;
+  padding: 0;
+  background: transparent;
+  color: #1f6554;
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.privacy-authorization__contract::after {
+  border: 0;
+}
+
+.privacy-authorization__actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 30px;
+}
+
+.privacy-authorization__button {
+  flex: 1;
+  min-height: 82px;
+  margin: 0;
+  border-radius: 22px;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 82px;
+}
+
+.privacy-authorization__button--secondary {
+  border: 2px solid #8ca89f;
+  background: #fff;
+  color: #31584d;
+}
+
+.privacy-authorization__button--primary {
+  border: 2px solid #153f36;
+  background: #153f36;
+  color: #fff;
+}

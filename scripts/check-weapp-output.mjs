@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  findPrivacyPermissionIssues,
   findUnusedDeclaredComponents,
   findWxmlDependencySources,
   hasRuntimePluginUsage
@@ -125,15 +126,9 @@ if (appConfig.lazyCodeLoading !== 'requiredComponents') {
     'dist/app.json must set lazyCodeLoading to requiredComponents'
   )
 }
-if (
-  appConfig.permission &&
-  Object.prototype.hasOwnProperty.call(
-    appConfig.permission,
-    'scope.record'
-  )
-) {
+for (const issue of findPrivacyPermissionIssues(appConfig.permission)) {
   failures.push(
-    'dist/app.json must not declare unsupported permission scope.record'
+    `dist/app.json privacy permission contract failed: ${issue}`
   )
 }
 

@@ -32,6 +32,11 @@ export default defineAppConfig({
     }
   ],
   lazyCodeLoading: 'requiredComponents',
+  permission: {
+    'scope.record': {
+      desc: '用于用户主动语音输入和为个人图卡录制声音'
+    }
+  },
   plugins: {
     WechatSI: {
       version: process.env.TARO_APP_WECHAT_SI_VERSION || '0.3.4',

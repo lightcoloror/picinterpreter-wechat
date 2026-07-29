@@ -34,6 +34,9 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
     defineConstants: {
       'process.env.TARO_APP_API_BASE_URL': JSON.stringify(
         process.env.TARO_APP_API_BASE_URL || ''
+      ),
+      'process.env.TARO_APP_SOURCE_CODE_URL': JSON.stringify(
+        process.env.TARO_APP_SOURCE_CODE_URL || ''
       )
     },
     copy: {

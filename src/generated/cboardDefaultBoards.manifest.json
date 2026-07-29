@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "cboard/src/api/boards.json#advanced + zh-CN.json + zh-CN.aac-review.json",
-  "boardsSha256": "4b774475a12c279174d4663e7180d6805632519705885dbc3de9cff771e9a34a",
+  "boardsSha256": "5c670f523b66f94e4c941b906c52169974d36138bb9624121da1215e649e402d",
   "translationsSha256": "4f37a8106015b0c12d9aa93e7806f8edbc7ea5a8d86539b6824e06da74656aa4",
   "reviewedTranslationsSha256": "ea7fecf9eb95c1f3336a672a4aa4aab9dbdb8eef2e2312d4fcbe41f875370e46",
   "boardCount": 46,

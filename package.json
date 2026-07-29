@@ -2,6 +2,11 @@
   "name": "cboard-wechat-poc",
   "version": "0.1.0",
   "private": true,
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lightcoloror/picinterpreter-wechat.git"
+  },
   "description": "PicInterpreter CBoard WeChat communication PoC",
   "templateInfo": {
     "name": "default",

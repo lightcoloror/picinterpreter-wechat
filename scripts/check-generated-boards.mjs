@@ -1,7 +1,12 @@
+import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  decodeCboardDefaultRuntimeBoards,
+  projectCboardDefaultRuntimeBoards
+} from './cboard-default-runtime-format.mjs'
 import { inspectGeneratedPng } from './generated-png-integrity.mjs'
 
 const projectRoot = path.resolve(
@@ -18,6 +23,10 @@ const reviewedTranslationsPath = path.join(
 const generatedBoardsPath = path.join(
   projectRoot,
   'src/generated/cboardDefaultBoards.json'
+)
+const runtimeBoardsPath = path.join(
+  projectRoot,
+  'src/generated/cboardDefaultBoards.runtime.json'
 )
 const manifestPath = path.join(
   projectRoot,
@@ -41,7 +50,11 @@ function fail(message) {
   process.exit(1)
 }
 
-if (!existsSync(generatedBoardsPath) || !existsSync(manifestPath)) {
+if (
+  !existsSync(generatedBoardsPath) ||
+  !existsSync(runtimeBoardsPath) ||
+  !existsSync(manifestPath)
+) {
   fail('Generated CBoard board data is missing.')
 }
 
@@ -72,6 +85,14 @@ if (
 }
 
 const boards = JSON.parse(readFileSync(generatedBoardsPath, 'utf8'))
+const runtimeBoards = decodeCboardDefaultRuntimeBoards(
+  JSON.parse(readFileSync(runtimeBoardsPath, 'utf8'))
+)
+try {
+  assert.deepEqual(runtimeBoards, projectCboardDefaultRuntimeBoards(boards))
+} catch {
+  fail('Generated CBoard runtime data is stale or incomplete.')
+}
 const tiles = boards.flatMap(board => board.tiles || [])
 const imagePrefix = '/assets/cboard-default/'
 const generatedImageNamePattern = /^[0-9a-f]{16}\.png$/

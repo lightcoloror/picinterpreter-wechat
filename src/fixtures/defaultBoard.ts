@@ -5,13 +5,14 @@ import {
   type TileDTO
 } from '@cboard-communication-core/dto'
 
-import generatedBoards from '../generated/cboardDefaultBoards.json'
+import compactBoards from '../generated/cboardDefaultBoards.runtime.json'
 import {
   CBOARD_CHINESE_SYNCHRONIZED_LABEL_KEYS,
   resolveCboardChineseBoardName,
   resolveCboardChineseTileLabel
 } from './cboardChineseOverrides'
 import { resolveCboardDefaultPictogramAttribution } from './cboardDefaultAttribution'
+import { decodeCboardDefaultRuntimePayload } from './cboardDefaultRuntime'
 
 export const DEFAULT_ROOT_BOARD_ID = 'root'
 
@@ -25,6 +26,8 @@ const CALIBRATED_DEFAULT_LABEL_KEYS = [
   'symbol.foodKitchenItems.spoon',
   'symbol.foodKitchenItems.bowl'
 ]
+
+const generatedBoards = decodeCboardDefaultRuntimePayload(compactBoards)
 
 const sourceBoardDTOs: BoardDTO[] = generatedBoards.map(board => {
   const boardDTO = createBoardDTO({

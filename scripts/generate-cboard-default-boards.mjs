@@ -9,6 +9,7 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { encodeCboardDefaultRuntimeBoards } from './cboard-default-runtime-format.mjs'
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -24,6 +25,10 @@ const reviewedTranslationsPath = path.join(
 const generatedRoot = path.join(projectRoot, 'src/generated')
 const assetsRoot = path.join(projectRoot, 'src/assets/cboard-default')
 const boardsOutputPath = path.join(generatedRoot, 'cboardDefaultBoards.json')
+const runtimeBoardsOutputPath = path.join(
+  generatedRoot,
+  'cboardDefaultBoards.runtime.json'
+)
 const manifestOutputPath = path.join(
   generatedRoot,
   'cboardDefaultBoards.manifest.json'
@@ -207,6 +212,10 @@ const manifest = {
 }
 
 writeFileSync(boardsOutputPath, JSON.stringify(generatedBoards) + '\n')
+writeFileSync(
+  runtimeBoardsOutputPath,
+  JSON.stringify(encodeCboardDefaultRuntimeBoards(generatedBoards)) + '\n'
+)
 writeFileSync(manifestOutputPath, JSON.stringify(manifest, null, 2) + '\n')
 
 console.log(

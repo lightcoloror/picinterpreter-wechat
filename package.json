@@ -33,6 +33,8 @@
     "lint": "node ./node_modules/eslint/bin/eslint.js src --ext .ts,.tsx",
     "check:boundary": "node ./scripts/check-boundary.mjs",
     "check:release-readiness": "node ./scripts/release-readiness.mjs",
+    "create:release-evidence": "node ./scripts/create-release-evidence.mjs",
+    "check:local-release": "npm run typecheck && npm run lint && npm test && npm run check:boundary && npm run build:weapp && npm run create:release-evidence",
     "test:e2e:weapp": "node ./scripts/weapp-skill-smoke.mjs",
     "test:e2e:weapp:restore-storage": "node ./scripts/weapp-skill-smoke.mjs --restore-storage-recovery",
     "test:e2e:weapp:ordering": "set WEAPP_E2E_ORDERING_ONLY=1&& node ./scripts/weapp-skill-smoke.mjs",

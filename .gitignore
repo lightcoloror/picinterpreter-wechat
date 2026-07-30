@@ -9,3 +9,4 @@ node_modules/
 *.local
 project.private.config.json
 /.release-readiness.local.json
+.release-evidence/

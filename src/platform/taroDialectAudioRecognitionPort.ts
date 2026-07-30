@@ -1,5 +1,7 @@
 import Taro from '@tarojs/taro'
 
+import { apiBaseUrlFor } from '../config/runtimeCapabilities'
+
 import {
   createDialectAudioRecognitionPort,
   type DialectAudioRecorderManager
@@ -8,7 +10,7 @@ import { taroCboardSessionStore } from './taroCboardAccountPort'
 
 export const taroDialectAudioRecognitionPort =
   createDialectAudioRecognitionPort({
-    apiBaseUrl: process.env.TARO_APP_API_BASE_URL || '',
+    apiBaseUrl: apiBaseUrlFor('dialectAsr'),
     getAuthToken: () => taroCboardSessionStore.getAuthToken(),
     getRecorderManager: () =>
       Taro.getRecorderManager() as unknown as DialectAudioRecorderManager,

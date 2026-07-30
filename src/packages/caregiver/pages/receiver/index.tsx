@@ -36,6 +36,7 @@ import {
   normalizeMissingTokenSuggestions
 } from '@cboard-communication-core/missingTokens'
 
+import { runtimeCapabilities } from '../../../../config/runtimeCapabilities'
 import CorrectionMemoryManager from '../../../../features/communication/CorrectionMemoryManager'
 import ReceiverDisplayPage from '../../../../features/communication/ReceiverDisplayPage'
 import NetworkStatusNotice from '../../../../features/communication/NetworkStatusNotice'
@@ -643,7 +644,11 @@ export default function ReceiverPage() {
         boards={communicationBoards}
         initialState={receiverWorkspaceResumeState}
         imageTextRecognitionIntent={imageTextRecognitionIntent}
-        onOpenImageTextRecognition={openImageTextRecognition}
+        onOpenImageTextRecognition={
+          runtimeCapabilities.ocr
+            ? openImageTextRecognition
+            : undefined
+        }
         onConfirm={appendHistory}
         onCreateDraft={createReceiverDraft}
         onUpdateDraft={updateReceiverDraft}

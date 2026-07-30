@@ -1,10 +1,14 @@
 import Taro from '@tarojs/taro'
 
+import { runtimeCapabilities } from '../config/runtimeCapabilities'
+
 import { createArasaacPictogramSearchPort } from './arasaacPictogramSearchPort'
 import { createFallbackPictogramSearchPort } from './fallbackPictogramSearchPort'
 import { createPictogramSearchPort } from './pictogramSearchPort'
 
-const apiBaseUrl = process.env.TARO_APP_API_BASE_URL || ''
+const apiBaseUrl = runtimeCapabilities.onlinePictograms
+  ? runtimeCapabilities.apiBaseUrl
+  : ''
 const request = (options: Parameters<typeof Taro.request>[0]) =>
   Taro.request(options)
 const downloadFile = (options: Parameters<typeof Taro.downloadFile>[0]) =>
@@ -30,9 +34,13 @@ const arasaacDirectPictogramSearchPort = createArasaacPictogramSearchPort({
   saveFile
 })
 
-export const taroPictogramSearchPort = createFallbackPictogramSearchPort({
+const onlinePictogramSearchPort = createFallbackPictogramSearchPort({
   primary: cboardApiPictogramSearchPort,
   fallback: arasaacDirectPictogramSearchPort,
   isFallbackPictogram: pictogram =>
     pictogram.image.startsWith('https://static.arasaac.org/')
 })
+
+export const taroPictogramSearchPort = runtimeCapabilities.onlinePictograms
+  ? onlinePictogramSearchPort
+  : cboardApiPictogramSearchPort

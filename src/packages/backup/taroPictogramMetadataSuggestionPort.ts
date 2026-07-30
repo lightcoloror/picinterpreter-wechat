@@ -1,11 +1,13 @@
 import Taro from '@tarojs/taro'
 
+import { apiBaseUrlFor } from '../../config/runtimeCapabilities'
+
 import { taroCboardSessionStore } from '../../platform/taroCboardAccountPort'
 import { createPictogramMetadataSuggestionPort } from './pictogramMetadataSuggestionPort'
 
 export const taroPictogramMetadataSuggestionPort =
   createPictogramMetadataSuggestionPort({
-    apiBaseUrl: process.env.TARO_APP_API_BASE_URL || '',
+    apiBaseUrl: apiBaseUrlFor('aiFeatures'),
     getAuthToken: () => taroCboardSessionStore.getAuthToken(),
     compressImage: async filePath => {
       const result = await Taro.compressImage({

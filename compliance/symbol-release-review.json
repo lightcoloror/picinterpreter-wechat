@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "intent": "在购买和提审前明确内置图符的发布许可状态，避免把技术构建成功误认为可以合法发布。",
+  "decision": "正式发布检查只接受 status=approved；当前 ARASAAC 和 CBoard 图符继续用于开发与测试，但在取得书面许可或完成替换前阻断公司主体正式发布。",
+  "reason": "ARASAAC 采用 CC BY-NC-SA 4.0，含非商业限制；17 个 CBoard 分类图符缺少逐图明确许可证据。",
+  "evidence": "THIRD_PARTY_NOTICES.md、CBoard 默认 boards.json、逐图卡归因规则及生成清单。",
+  "effectiveScope": "微信小程序随包的 46 个默认板、871 个图卡和 798 张去重图片。",
+  "providers": {
+    "mulberry": {
+      "status": "approved",
+      "expectedTileCount": 792,
+      "condition": "保留署名并遵守 CC BY-SA 4.0。"
+    },
+    "arasaac": {
+      "status": "pending-license-or-replacement",
+      "expectedTileCount": 62,
+      "condition": "公司主体正式发布前取得适用许可，或替换全部相关图符。"
+    },
+    "cboard": {
+      "status": "pending-license-proof-or-replacement",
+      "expectedTileCount": 17,
+      "condition": "取得逐图许可证据，或替换全部相关图符。"
+    }
+  }
+}

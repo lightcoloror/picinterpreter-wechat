@@ -77,7 +77,7 @@ interface ReceiverWorkspaceProps {
   boards: BoardDTO[]
   initialState?: ReceiverWorkspaceResumeState | null
   imageTextRecognitionIntent?: ImageTextRecognitionIntent | null
-  onOpenImageTextRecognition: () => void
+  onOpenImageTextRecognition?: () => void
   onConfirm: (entry: ReceiverHistoryEntry) => boolean
   onCreateDraft: (entry: ReceiverHistoryEntry) => ReceiverDraftEntry | null
   onUpdateDraft: (draft: ReceiverDraftEntry, entry: ReceiverHistoryEntry) => ReceiverDraftEntry | null
@@ -969,14 +969,16 @@ export default function ReceiverWorkspace({
                 恢复原识别文字
               </Button>
             )}
-          <Button
-            id='receiver-image-text-button'
-            className='button button--image-text'
-            disabled={isListening || dialectAudioPhase !== 'idle'}
-            onClick={onOpenImageTextRecognition}
-          >
-            图片识字
-          </Button>
+          {onOpenImageTextRecognition && (
+            <Button
+              id='receiver-image-text-button'
+              className='button button--image-text'
+              disabled={isListening || dialectAudioPhase !== 'idle'}
+              onClick={onOpenImageTextRecognition}
+            >
+              图片识字
+            </Button>
+          )}
           <Button
             className='button button--outline'
             onClick={() => {

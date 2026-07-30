@@ -37,6 +37,24 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
       ),
       'process.env.TARO_APP_SOURCE_CODE_URL': JSON.stringify(
         process.env.TARO_APP_SOURCE_CODE_URL || ''
+      ),
+      'process.env.TARO_APP_RELEASE_CHANNEL': JSON.stringify(
+        process.env.TARO_APP_RELEASE_CHANNEL || 'development'
+      ),
+      'process.env.TARO_APP_ENABLE_CLOUD_FEATURES': JSON.stringify(
+        process.env.TARO_APP_ENABLE_CLOUD_FEATURES || ''
+      ),
+      'process.env.TARO_APP_ENABLE_AI_FEATURES': JSON.stringify(
+        process.env.TARO_APP_ENABLE_AI_FEATURES || ''
+      ),
+      'process.env.TARO_APP_ENABLE_OCR': JSON.stringify(
+        process.env.TARO_APP_ENABLE_OCR || ''
+      ),
+      'process.env.TARO_APP_ENABLE_ONLINE_PICTOGRAMS': JSON.stringify(
+        process.env.TARO_APP_ENABLE_ONLINE_PICTOGRAMS || ''
+      ),
+      'process.env.TARO_APP_ENABLE_DIALECT_ASR': JSON.stringify(
+        process.env.TARO_APP_ENABLE_DIALECT_ASR || ''
       )
     },
     copy: {

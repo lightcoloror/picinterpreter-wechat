@@ -17,7 +17,10 @@
   "scripts": {
     "generate:boards": "node ./scripts/generate-cboard-default-boards.mjs",
     "check:boards": "node ./scripts/check-generated-boards.mjs",
-    "prebuild:weapp": "node ./scripts/check-generated-boards.mjs",
+    "check:symbol-licenses": "node ./scripts/check-symbol-licenses.mjs",
+    "check:symbol-licenses:formal": "node ./scripts/check-symbol-licenses.mjs --formal-release",
+    "generate:symbol-license-inventory": "node ./scripts/check-symbol-licenses.mjs --write-inventory",
+    "prebuild:weapp": "npm run check:boards && npm run check:symbol-licenses",
     "build:weapp": "node ./node_modules/@tarojs/cli/bin/taro build --type weapp",
     "analyze:weapp": "set WEAPP_BUNDLE_ANALYZE=1&& npm run build:weapp&& node ./node_modules/webpack-bundle-analyzer/lib/bin/analyzer.js ./.bundle-analysis/weapp-stats.json ./dist --mode json --report ./.bundle-analysis/weapp-report.json --no-open",
     "postbuild:weapp": "node ./scripts/check-weapp-output.mjs",

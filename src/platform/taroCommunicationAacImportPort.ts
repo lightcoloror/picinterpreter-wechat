@@ -1,5 +1,6 @@
 import Taro from '@tarojs/taro'
 
+import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { taroCboardSessionStore } from './taroCboardAccountPort'
 import { createCommunicationAacImportPort } from './communicationAacImportPort'
 
@@ -32,7 +33,7 @@ function removeFile(filePath: string) {
 
 export const taroCommunicationAacImportPort =
   createCommunicationAacImportPort({
-    apiBaseUrl: process.env.TARO_APP_API_BASE_URL || '',
+    apiBaseUrl: apiBaseUrlFor('cloudFeatures'),
     getAuthToken: () => taroCboardSessionStore.getAuthToken(),
     uploadFile: async options => {
       const extensionMatch = options.fileName

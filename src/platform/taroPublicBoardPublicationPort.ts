@@ -1,5 +1,6 @@
 import Taro from '@tarojs/taro'
 
+import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { taroCboardSessionStore } from './taroCboardAccountPort'
 import { createPublicBoardPublicationPort } from './publicBoardPublicationPort'
 
@@ -22,7 +23,7 @@ async function resolveUploadPath(source: string) {
 
 export const taroPublicBoardPublicationPort =
   createPublicBoardPublicationPort({
-    apiBaseUrl: process.env.TARO_APP_API_BASE_URL || '',
+    apiBaseUrl: apiBaseUrlFor('cloudFeatures'),
     getIdentity: () => {
       const session = taroCboardSessionStore.load()
       const token = taroCboardSessionStore.getAuthToken()

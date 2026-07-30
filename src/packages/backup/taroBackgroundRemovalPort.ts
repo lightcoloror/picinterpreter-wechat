@@ -1,12 +1,14 @@
 import Taro from '@tarojs/taro'
 
+import { apiBaseUrlFor } from '../../config/runtimeCapabilities'
+
 import { taroCboardSessionStore } from '../../platform/taroCboardAccountPort'
 import { saveBase64PngToUserData } from '../../platform/taroBase64ImageFile'
 import { createBackgroundRemovalPort } from './backgroundRemovalPort'
 
 export const taroBackgroundRemovalPort =
   createBackgroundRemovalPort({
-    apiBaseUrl: process.env.TARO_APP_API_BASE_URL || '',
+    apiBaseUrl: apiBaseUrlFor('aiFeatures'),
     getAuthToken: () => taroCboardSessionStore.getAuthToken(),
     compressImage: async filePath => {
       const result = await Taro.compressImage({

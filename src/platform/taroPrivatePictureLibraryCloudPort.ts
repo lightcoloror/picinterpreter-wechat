@@ -1,5 +1,6 @@
 import Taro from '@tarojs/taro'
 
+import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { taroCboardSessionStore } from './taroCboardAccountPort'
 import {
   createPrivateDeviceDataCloudPort,
@@ -62,7 +63,7 @@ function removeFile(filePath: string) {
 
 function createTaroPrivateArchiveDependencies(tempFilePrefix: string) {
   return {
-    apiBaseUrl: process.env.TARO_APP_API_BASE_URL || '',
+    apiBaseUrl: apiBaseUrlFor('cloudFeatures'),
     getAuthToken: () => taroCboardSessionStore.getAuthToken(),
     request: async options => {
       const response = await Taro.request({

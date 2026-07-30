@@ -1,11 +1,13 @@
 import Taro from '@tarojs/taro'
 
+import { apiBaseUrlFor } from '../../config/runtimeCapabilities'
+
 import { taroCboardSessionStore } from '../../platform/taroCboardAccountPort'
 import { createImageTextRecognitionPort } from './imageTextRecognitionPort'
 
 export const taroImageTextRecognitionPort =
   createImageTextRecognitionPort({
-    apiBaseUrl: process.env.TARO_APP_API_BASE_URL || '',
+    apiBaseUrl: apiBaseUrlFor('ocr'),
     getAuthToken: () => taroCboardSessionStore.getAuthToken(),
     chooseImage: async () => {
       const result = await Taro.chooseMedia({

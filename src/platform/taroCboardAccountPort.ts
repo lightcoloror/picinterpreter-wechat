@@ -1,10 +1,11 @@
 import Taro from '@tarojs/taro'
 
+import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { createCboardAccountPort } from './cboardAccountPort'
 import { createCboardSessionStore } from './cboardSession'
 
 export const taroCboardAccountPort = createCboardAccountPort({
-  apiBaseUrl: process.env.TARO_APP_API_BASE_URL || '',
+  apiBaseUrl: apiBaseUrlFor('cloudFeatures'),
   request: async options => {
     const response = await Taro.request({
       url: options.url,

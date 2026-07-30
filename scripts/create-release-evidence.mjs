@@ -71,16 +71,24 @@ export function buildArtifactInventory(distRoot) {
   }
 }
 
-function runGit(args) {
-  const result = spawnSync('git', args, {
+export function runGit(args, spawn = spawnSync) {
+  const result = spawn('git', args, {
     cwd: projectRoot,
     encoding: 'utf8',
     windowsHide: true
   })
-  if (result.status !== 0) {
-    throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim()}`)
+  if (result.error) {
+    throw new Error(
+      `git ${args.join(' ')} failed to start: ${result.error.message}`
+    )
   }
-  return result.stdout.trim()
+  if (result.status !== 0) {
+    const details = String(
+      result.stderr || result.stdout || 'unknown git error'
+    ).trim()
+    throw new Error(`git ${args.join(' ')} failed: ${details}`)
+  }
+  return String(result.stdout || '').trim()
 }
 
 export function parseSafeProductionSettings(source) {

@@ -4,7 +4,8 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildArtifactInventory,
-  parseSafeProductionSettings
+  parseSafeProductionSettings,
+  runGit
 } from '../scripts/create-release-evidence.mjs'
 
 const tempRoots: string[] = []
@@ -60,5 +61,23 @@ APP_SECRET=must-not-appear
     expect(() => buildArtifactInventory(root)).toThrow(
       'Wechat dist/app.json is missing'
     )
+  })
+
+  it('reports a bounded diagnostic when git cannot start', () => {
+    expect(() =>
+      runGit(['status'], () => ({
+        error: new Error('spawn EPERM')
+      }))
+    ).toThrow('git status failed to start: spawn EPERM')
+  })
+
+  it('does not assume stderr exists after a failed git command', () => {
+    expect(() =>
+      runGit(['status'], () => ({
+        status: 1,
+        stdout: undefined,
+        stderr: undefined
+      }))
+    ).toThrow('git status failed: unknown git error')
   })
 })

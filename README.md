@@ -1165,3 +1165,12 @@ yarn test:e2e:weapp:enable-service # 仅首次且明确同意开启 localhost �
 - 证据：真实压缩 ZIP 回归证明超过 20 MiB 的 5 段 MP3 被拒绝并保留本机板，21 MiB 的 3 段 MP4 可成功恢复。聚焦 `22/22`、全量 `83 files / 367 tests`、质量门 `10/10`、TypeScript、ESLint、`229 app / 32 core` 和 production build 通过；main `1,285,089 B`、backup `649,483 B`。
 - 生效范围：微信普通图库、完整本机和端侧加密私有快照解密后的恢复；不改变导出、单文件限制、CBoard Web、患者 UI、账号或 API。未预览、上传、发布、部署、提交或推送，未使用 Computer Use，也未置顶开发者工具。
 - 记录：Codex（GPT-5.6），2026-07-28 22:46:55。
+
+### 变动 125：核心真机验收与正式联网验收分层记录
+
+- 意图：把已经由用户在正式 AppID 手机预览中确认的双向沟通核心闭环留下可核验证据，同时避免将离线核心无异常误写成正式后端、域名和真实账号链已经可上线。
+- 决策：`release-readiness` 新增 `coreRealDeviceAcceptanceConfirmed` 独立门；正式发布继续同时要求 `realDeviceAcceptanceConfirmed`。本机 `.release-readiness.local.json` 只记录已证实状态并保持 Git 忽略，未知或待购买事项继续为 `false` 或空值。
+- 理由：真机图卡、语音输入、分词编辑、图片序列、朗读和波形通过，能够证明核心交互；但它不能证明尚未部署的 HTTPS API、登录同步、AI、OCR、在线补图、备案和合法域名，因此两种验收必须分开。
+- 证据：2026-08-26 使用微信开发者工具 Skill `0.3.10`、正式 AppID `wx02246603dc9a960c` 和已授权 WechatSI `0.3.4` 成功 `auto_preview`；用户在手机反馈“没什么问题”。同轮 production build、`90` 个测试文件中的 `397` 项测试和质量门 `11/11` 通过；预览报告 main `1,314,153 B`。GitHub 只读检查确认 `lightcoloror/picinterpreter-wechat` 仍为私有仓库。
+- 生效范围：微信正式发布证据模型、示例配置、门禁测试和本机发布基线；不改变患者/照护者业务行为，不代表官方性能扫描、公开源码、素材许可、备案、域名或正式后端已完成。
+- 记录：Codex (GPT-5.6 Sol)，2026-08-26 19:15:57。

@@ -22,6 +22,7 @@ const completeConfig = {
   cboardSymbolsResolved: true,
   commercialUse: false,
   arasaacCommercialUseResolved: false,
+  coreRealDeviceAcceptanceConfirmed: true,
   realDeviceAcceptanceConfirmed: true,
   performanceScanConfirmed: true
 }
@@ -62,6 +63,27 @@ describe('formal release readiness gate', () => {
 
     expect(result.issues).toContain(
       '商业使用版本尚未取得 ARASAAC 商业许可或替换非商业图符。'
+    )
+  })
+
+  test('keeps core and full real-device acceptance as separate gates', () => {
+    const missingCore = evaluateReleaseReadiness({
+      ...completeConfig,
+      coreRealDeviceAcceptanceConfirmed: false
+    })
+    expect(missingCore.issues).toContain(
+      '尚未完成正式 AppID 下的双向沟通核心真机验收。'
+    )
+
+    const missingFullAcceptance = evaluateReleaseReadiness({
+      ...completeConfig,
+      realDeviceAcceptanceConfirmed: false
+    })
+    expect(missingFullAcceptance.issues).not.toContain(
+      '尚未完成正式 AppID 下的双向沟通核心真机验收。'
+    )
+    expect(missingFullAcceptance.issues).toContain(
+      '尚未完成正式后端、真实账号和真实网络下的手机验收。'
     )
   })
 })

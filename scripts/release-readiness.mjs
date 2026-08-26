@@ -94,6 +94,10 @@ export function evaluateReleaseReadiness(config = {}) {
   }
 
   requireTrue(
+    'coreRealDeviceAcceptanceConfirmed',
+    '尚未完成正式 AppID 下的双向沟通核心真机验收。'
+  )
+  requireTrue(
     'realDeviceAcceptanceConfirmed',
     '尚未完成正式后端、真实账号和真实网络下的手机验收。'
   )

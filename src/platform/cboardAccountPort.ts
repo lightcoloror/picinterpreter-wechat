@@ -752,6 +752,11 @@ export function createCboardAccountPort(
     },
 
     async syncConfirmedReceiverRecords(token, records) {
+      if (!buildConfirmedReceiverSyncPayload(records).length) {
+        return { ok: true, message: '沟通历史只保存在本机。', value: {
+          acceptedCount: 0, conflictCount: 0, conflictedRecordIds: [], records: [], deletedRecordIds: [], deletedRecords: []
+        } }
+      }
       const result = await request(
         '/communication/receiver-records/sync',
         'POST',

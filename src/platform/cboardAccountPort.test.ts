@@ -460,7 +460,7 @@ describe('cboardAccountPort', () => {
     expect(harness.request).not.toHaveBeenCalled()
   })
 
-  test('uploads confirmed receiver records without local maintenance fields', async () => {
+  test('keeps both confirmed receiver records and drafts local without an HTTP request', async () => {
     const harness = createHarness()
     await harness.port.syncConfirmedReceiverRecords('secret-token', [
       {
@@ -499,29 +499,10 @@ describe('cboardAccountPort', () => {
       }
     ])
 
-    expect(harness.request).toHaveBeenLastCalledWith(expect.objectContaining({
-      url: 'https://api.example.test/communication/receiver-records/sync',
-      data: {
-        records: [
-          expect.objectContaining({
-            id: 'receiver-confirmed',
-            recordStatus: 'confirmed'
-          })
-        ]
-      },
-      header: expect.objectContaining({
-        Authorization: 'Bearer secret-token'
-      })
-    }))
-    const lastCall = harness.request.mock.calls[
-      harness.request.mock.calls.length - 1
-    ]
-    const uploaded = lastCall[0].data.records
-    expect(uploaded[0].baseVersion).toBe(0)
-    expect(uploaded[0].pictogramSequence[0]).not.toHaveProperty('boardId')
+    expect(harness.request).not.toHaveBeenCalled()
   })
 
-  test('normalizes version conflicts and structured tombstones from the API', async () => {
+  test('does not fetch old cloud receiver history when asked to synchronize an empty list', async () => {
     const harness = createHarness()
     harness.request.mockResolvedValueOnce({
       statusCode: 200,
@@ -547,17 +528,13 @@ describe('cboardAccountPort', () => {
 
     expect(result.value).toEqual({
       acceptedCount: 0,
-      conflictCount: 1,
-      conflictedRecordIds: ['receiver-1'],
+      conflictCount: 0,
+      conflictedRecordIds: [],
       records: [],
-      deletedRecordIds: ['receiver-deleted'],
-      deletedRecords: [{
-        id: 'receiver-deleted',
-        deletedAt: 30,
-        deletedBy: 'user-1',
-        serverVersion: 2
-      }]
+      deletedRecordIds: [],
+      deletedRecords: []
     })
+    expect(harness.request).not.toHaveBeenCalled()
   })
 
   test('marks selected receiver records as deleted with the bearer token', async () => {

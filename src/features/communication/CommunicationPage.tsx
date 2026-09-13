@@ -35,6 +35,7 @@ import type {
   PictogramOrderingState
 } from '@cboard-communication-core/pictogramOrdering'
 import type { CboardAccountSession } from '../../platform/cboardAccountPort'
+import { useCareRefresh } from '../../platform/taroCareWorkspace'
 import { taroCboardSessionStore } from '../../platform/taroCboardAccountPort'
 import { taroCommunicationNavigationIntent } from '../../platform/taroCommunicationNavigationIntent'
 import { taroCommunicationPreferencesStore } from '../../platform/taroCommunicationPreferencesStore'
@@ -254,7 +255,7 @@ export default function CommunicationPage() {
     })
   }
 
-  useDidShow(() => {
+  const refreshCareWorkspace = () => {
     const nextConversation =
       repositoryRef.current.getActiveConversationSession()
     setConversationSession(current => {
@@ -348,7 +349,9 @@ export default function CommunicationPage() {
     if (navigationIntent && navigationIntent.showCaregiverTools) {
       setShowCaregiverTools(true)
     }
-  })
+  }
+  useDidShow(refreshCareWorkspace)
+  useCareRefresh(refreshCareWorkspace)
 
   const appendHistory = (entry: CommunicationHistoryEntry) => {
     try {
@@ -608,4 +611,3 @@ export default function CommunicationPage() {
     </View>
   )
 }
-

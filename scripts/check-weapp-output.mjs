@@ -249,6 +249,12 @@ const managementJavaScript = (
       .map(file => readFile(file, 'utf8'))
   )
 ).join('\n')
+// Account and speech adapters are now also used by the launch/patient pages.
+// Webpack may move these adapters into the common bootstrap chunk. UI controls
+// must still be present in the management subpackage itself.
+const sharedBootstrapJavaScript = (await Promise.all(outputFiles.filter(file =>
+  path.dirname(file) === outputRoot && path.basename(file) === 'common.js'
+).map(file => readFile(file, 'utf8')))).join('\n')
 for (const requiredToken of [
   '/user/login',
   '/settings',
@@ -258,7 +264,8 @@ for (const requiredToken of [
   'service-readiness-check-button',
   'speech-voice-preview-button'
 ]) {
-  if (!managementJavaScript.includes(requiredToken)) {
+  const reachableJavaScript = requiredToken.startsWith('/') ? managementJavaScript + sharedBootstrapJavaScript : managementJavaScript
+  if (!reachableJavaScript.includes(requiredToken)) {
     failures.push(
       'Management subpackage is missing runtime capability ' +
         requiredToken

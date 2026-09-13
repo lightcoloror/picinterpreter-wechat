@@ -69,6 +69,7 @@ import { taroPictogramSearchPort } from '../../../../platform/taroPictogramSearc
 import type { RuntimePictogram } from '../../../../platform/pictogramSearchPort'
 import { taroPictureLibraryStore } from '../../../../platform/taroPictureLibraryStore'
 import '../../../../features/communication/CommunicationPage.css'
+import { useCareRefresh } from '../../../../platform/taroCareWorkspace'
 
 interface ReceiverDisplayState {
   items: CommunicationOutputItem[]
@@ -157,6 +158,14 @@ export default function ReceiverPage() {
   )
   const [receiverDisplay, setReceiverDisplay] =
     useState<ReceiverDisplayState | null>(null)
+  const [, setCareRevision] = useState(0)
+  useCareRefresh(() => {
+    initialPreferencesRef.current = taroCommunicationPreferencesStore.load()
+    initialLibraryBoardsRef.current = taroPictureLibraryStore.load()
+    initialPersonalImagePreferencesRef.current = repositoryRef.current.loadPersonalImagePreferences()
+    setHistoryItems(repositoryRef.current.loadCommunicationHistory())
+    setCareRevision(value => value + 1)
+  })
 
   useDidShow(() => {
     const intent = taroImageTextRecognitionIntent.take()

@@ -26,6 +26,9 @@ import type {
   CboardApiResult
 } from './cboardAccountPort'
 
+let careAdapter: { active(): boolean; sync(): Promise<void> } | null = null
+export function configureCareCloudSync(adapter: { active(): boolean; sync(): Promise<void> }) { careAdapter = adapter }
+
 type CloudSyncRepository = Pick<
   CommunicationRepository,
   | 'loadCommunicationHistory'
@@ -310,6 +313,10 @@ export function createCommunicationCloudSyncService(options: {
     syncReceiverRecords,
 
     async sync(token, syncOptions = {}) {
+      if (careAdapter?.active()) {
+        try { await careAdapter.sync(); return { ok: true, message: '患者资料已同步；普通历史只保存在本机。', value: getLocalValue() } }
+        catch (error) { return { ok: false, message: error instanceof Error ? error.message : '暂时无法同步，修改保留在本机。' } }
+      }
       const remote = await options.settingsPort.getSettings(token)
       if (!remote.ok || !remote.value) {
         return { ok: false, message: remote.message }
@@ -386,6 +393,10 @@ export function createCommunicationCloudSyncService(options: {
     },
 
     async upload(token, syncOptions = {}) {
+      if (careAdapter?.active()) {
+        try { await careAdapter.sync(); return { ok: true, message: '患者资料已同步；普通历史只保存在本机。', value: getLocalValue() } }
+        catch (error) { return { ok: false, message: error instanceof Error ? error.message : '暂时无法同步，修改保留在本机。' } }
+      }
       const savedPhraseSync = await syncSavedPhrases(token)
       if (!savedPhraseSync.ok) {
         return {

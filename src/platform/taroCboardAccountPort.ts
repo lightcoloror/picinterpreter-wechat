@@ -27,8 +27,18 @@ export const taroCboardAccountPort = createCboardAccountPort({
   }
 })
 
-export const taroCboardSessionStore = createCboardSessionStore({
+const sessionStore = createCboardSessionStore({
   getStorageSync: key => Taro.getStorageSync(key),
   setStorageSync: (key, value) => Taro.setStorageSync(key, value),
   removeStorageSync: key => Taro.removeStorageSync(key)
 })
+export const taroCboardSessionStore = {
+  ...sessionStore,
+  save(value: Parameters<typeof sessionStore.save>[0]) {
+    const previous = sessionStore.load()?.user.id
+    const result = sessionStore.save(value)
+    if (previous !== result?.user.id) Taro.eventCenter.trigger('care-identity-changed')
+    return result
+  },
+  clear() { sessionStore.clear(); Taro.eventCenter.trigger('care-identity-changed') }
+}

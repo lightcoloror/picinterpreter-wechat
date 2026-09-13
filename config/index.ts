@@ -100,10 +100,11 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
       webpackChain(chain) {
         chain.resolve.plugin('tsconfig-paths').use(TsconfigPathsPlugin)
         chain.module.rule('care-shared-panel')
-          .test(/CarePanel\.js$/)
+          .test(/[Cc]are[^/\\]*\.js$/)
           .include.add(path.resolve(__dirname, '../../cboard/src/common/communicationSupport')).end()
           .use('babel-loader').loader(require.resolve('babel-loader'))
           .options({ babelrc: false, configFile: false,
+            plugins: [require.resolve('@babel/plugin-transform-optional-chaining'), require.resolve('@babel/plugin-transform-nullish-coalescing-operator')],
             presets: [[require.resolve('babel-preset-taro'), { framework: 'react', ts: false, compiler: 'webpack5' }]] })
 
         if (shouldAnalyzeWeappBundle) {

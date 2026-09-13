@@ -1,3 +1,5 @@
+import { careErrorMessage } from '@cboard-communication-core/careErrors'
+
 function parseErrorPayload(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, unknown>
@@ -26,6 +28,8 @@ export function getCommunicationEnhancementLimitMessage(
   responseData: unknown,
   fallback: string
 ) {
+  const payload = parseErrorPayload(responseData)
+  if (payload?.code) return careErrorMessage({ status: statusCode, data: payload }) + ' ' + fallback
   if (statusCode !== 429) return ''
   return [
     'COMMUNICATION_MONTHLY_QUOTA_EXCEEDED',

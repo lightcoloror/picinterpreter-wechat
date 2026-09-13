@@ -46,3 +46,20 @@ test('a save made while the previous change is being queued survives for the nex
   await synchronizeCareWorkspace()
   for (const name of ['boards', 'personalImagePreferences', 'ordering', 'speechRate']) expect(h.values.has(h.scoped(`care-pending-${name}`))).toBe(false)
 })
+
+test('offline restored profiles persist local changes without calling cloud synchronization', async () => {
+  h.values.clear()
+  h.engine.sync.mockClear()
+  h.queue.mockClear()
+  h.context.accountId = 'offline'
+  h.values.set(h.scoped('care-pending-boards'), JSON.stringify([{ id: 'offline-board' }]))
+  try {
+    const { synchronizeCareWorkspace } = await import('./taroCareWorkspace')
+    await synchronizeCareWorkspace()
+    expect(h.queue).toHaveBeenCalled()
+    expect(h.values.has(h.scoped('care-pending-boards'))).toBe(false)
+    expect(h.engine.sync).not.toHaveBeenCalled()
+  } finally {
+    h.context.accountId = 'synthetic-account'
+  }
+})

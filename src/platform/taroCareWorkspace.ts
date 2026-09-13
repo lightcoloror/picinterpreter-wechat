@@ -115,7 +115,8 @@ export async function synchronizeCareWorkspace() {
         if (JSON.stringify(engine.view().resources['preference:speechRate']?.value) !== JSON.stringify(value)) await engine.edit('preference', 'speechRate', value)
         if (Taro.getStorageSync(rateKey) === rate) Taro.removeStorageSync(rateKey)
       }
-      await engine.sync()
+      // A password archive provides local content, never an online identity.
+      if (context.accountId !== 'offline') await engine.sync()
     } finally { if (currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) project(engine) }
   })().finally(() => { pending = null })
   return pending

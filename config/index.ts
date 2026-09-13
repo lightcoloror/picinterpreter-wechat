@@ -23,6 +23,7 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
     sourceRoot: 'src',
     outputRoot: 'dist',
     alias: {
+      react: path.resolve(__dirname, '../node_modules/react'),
       '@cboard-communication-core': path.resolve(
         __dirname,
         '../../cboard/src/common/communicationSupport'
@@ -32,6 +33,7 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
       "@tarojs/plugin-generator"
     ],
     defineConstants: {
+      'process.env.TARO_APP_CARE_COLLABORATION': JSON.stringify(process.env.TARO_APP_CARE_COLLABORATION || ''),
       'process.env.TARO_APP_API_BASE_URL': JSON.stringify(
         process.env.TARO_APP_API_BASE_URL || ''
       ),
@@ -97,6 +99,12 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
       },
       webpackChain(chain) {
         chain.resolve.plugin('tsconfig-paths').use(TsconfigPathsPlugin)
+        chain.module.rule('care-shared-panel')
+          .test(/CarePanel\.js$/)
+          .include.add(path.resolve(__dirname, '../../cboard/src/common/communicationSupport')).end()
+          .use('babel-loader').loader(require.resolve('babel-loader'))
+          .options({ babelrc: false, configFile: false,
+            presets: [[require.resolve('babel-preset-taro'), { framework: 'react', ts: false, compiler: 'webpack5' }]] })
 
         if (shouldAnalyzeWeappBundle) {
           chain.plugin('weapp-bundle-analyzer').use(BundleAnalyzerPlugin, [{

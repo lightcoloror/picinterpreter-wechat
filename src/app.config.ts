@@ -11,7 +11,7 @@ export default defineAppConfig({
     },
     {
       root: 'packages/management',
-      pages: ['pages/index/index']
+      pages: ['pages/index/index', 'pages/care/index']
     },
     {
       root: 'packages/backup',

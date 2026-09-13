@@ -4,6 +4,16 @@ import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { createCboardAccountPort } from './cboardAccountPort'
 import { createCboardSessionStore } from './cboardSession'
 
+export async function revokeCurrentCboardSession(token: string) {
+  const base = apiBaseUrlFor('cloudFeatures')
+  if (!base) return false
+  try {
+    const response = await Taro.request({ url: base.replace(/\/$/, '') + '/user/logout', method: 'POST',
+      timeout: 10000, data: {}, header: { Authorization: `Bearer ${token}` } })
+    return response.statusCode === 200 || response.statusCode === 401
+  } catch (_) { return false }
+}
+
 export const taroCboardAccountPort = createCboardAccountPort({
   apiBaseUrl: apiBaseUrlFor('cloudFeatures'),
   request: async options => {

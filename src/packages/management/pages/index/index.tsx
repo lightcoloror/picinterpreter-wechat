@@ -44,6 +44,7 @@ import {
 } from '../../../../platform/communicationCloudSync'
 import {
   taroCboardAccountPort,
+  revokeCurrentCboardSession,
   taroCboardSessionStore
 } from '../../../../platform/taroCboardAccountPort'
 import {
@@ -475,10 +476,14 @@ export default function CommunicationManagementPage() {
     }
   }
 
-  const logoutAccount = () => {
+  const logoutAccount = async () => {
+    if (accountBusy) return
+    setAccountBusy(true)
+    const revoked = !accountSession || await revokeCurrentCboardSession(accountSession.token)
     taroCboardSessionStore.clear()
     setAccountSession(null)
-    setAccountNotice('已退出账号，本机常用语和沟通历史仍然保留。')
+    setAccountBusy(false)
+    setAccountNotice(revoked ? '当前设备已退出，其他设备不受影响。' : '本机已退出，但云端撤销未确认；联网后请在设备管理中撤销该设备。')
   }
 
   const deleteAccount = async () => {
@@ -696,6 +701,7 @@ export default function CommunicationManagementPage() {
 
   return (
     <View className={pageClassName}>
+      {process.env.TARO_APP_CARE_COLLABORATION === 'true' && <Button onClick={() => Taro.navigateTo({ url: '/packages/management/pages/care/index' })}>患者档案与家庭协作</Button>}
       <View className='utility-page__header'>
         <View>
           <Text className='utility-page__eyebrow'>图语家 · 照护工具</Text>

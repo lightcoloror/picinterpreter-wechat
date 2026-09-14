@@ -24,6 +24,27 @@ vi.mock('./taroPictogramOrderingStore', () => ({ taroPictogramOrderingStore: {} 
 vi.mock('./communicationCloudSync', () => ({ configureCareCloudSync: vi.fn() }))
 vi.mock('../config/runtimeCapabilities', () => ({ apiBaseUrlFor: vi.fn() }))
 
+test('shared phrases use only the current scope and disappear when access is locked or no profile is selected', async () => {
+  h.values.clear()
+  const { loadCareSharedPhrases } = await import('./taroCareWorkspace')
+  const shared = [{ id: 'family-shared:test', careSharedReadOnly: true }]
+  h.values.set('other-family:care-shared-favorites', [{ id: 'unrelated' }])
+  expect(loadCareSharedPhrases()).toEqual([])
+  h.values.set(h.scoped('care-shared-favorites'), shared)
+  expect(loadCareSharedPhrases()).toEqual(shared)
+  h.values.set(h.scoped('care-locked'), true)
+  expect(loadCareSharedPhrases()).toEqual([])
+  h.values.set(h.scoped('care-locked'), false)
+  const profileId = h.context.profileId
+  try {
+    h.context.profileId = ''
+    expect(loadCareSharedPhrases()).toEqual([])
+  } finally {
+    h.context.profileId = profileId
+    h.values.clear()
+  }
+})
+
 test('a save made while the previous change is being queued survives for the next synchronization', async () => {
   const put = (kind: string, value: unknown) => h.values.set(h.scoped(`care-pending-${kind}`), JSON.stringify(value))
   put('boards', [{ id: 'b', revision: 1 }])

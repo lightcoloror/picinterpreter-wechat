@@ -167,6 +167,7 @@ export default function CommunicationPage() {
   const [savedPhraseItems, setSavedPhraseItems] = useState(
     initialSavedPhrasesRef.current
   )
+  const [sharedPhraseItems, setSharedPhraseItems] = useState<CommunicationSavedPhraseEntry[]>(() => loadCareSharedPhrases())
   const [personalImagePreferences, setPersonalImagePreferences] = useState(
     initialPersonalImagePreferencesRef.current
   )
@@ -270,6 +271,7 @@ export default function CommunicationPage() {
     const nextSavedPhrases =
       repositoryRef.current.loadCommunicationSavedPhrases()
     setSavedPhraseItems(nextSavedPhrases)
+    setSharedPhraseItems(loadCareSharedPhrases())
     const nextPersonalImagePreferences =
       repositoryRef.current.loadPersonalImagePreferences()
     const nextLibraryBoards = taroPictureLibraryStore.load()
@@ -568,7 +570,7 @@ export default function CommunicationPage() {
         boards={communicationBoards}
         session={expressionSession}
         dispatch={expressionDispatch}
-        savedPhrases={[...getCommunicationQuickPhrases(savedPhraseItems, 6), ...loadCareSharedPhrases()]}
+        savedPhrases={[...getCommunicationQuickPhrases(savedPhraseItems, 6), ...sharedPhraseItems]}
         conversationContext={repositoryRef.current.loadConversationContext({
           sessionId: conversationSession.id,
           maxTurns: 6

@@ -3,10 +3,13 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 
 assert(process.env.TEST_TMP_ROOT, 'Use the managed test runtime')
 const fixture = path.join(process.env.TEST_TMP_ROOT, 'symbol-review-fixture')
-for (const dir of ['scripts', 'src/generated', 'compliance']) mkdirSync(path.join(fixture, dir), { recursive: true })
+for (const dir of ['scripts', 'src/generated', 'compliance', 'src/assets/emergency']) mkdirSync(path.join(fixture, dir), { recursive: true })
+const emergencyPath = path.join(fixture, 'src/assets/emergency/manifest.json')
+writeFileSync(emergencyPath, JSON.stringify({ assets: [] }))
 const sourceDirectory = path.join(process.env.TEST_TMP_ROOT, 'cboard/src/api')
 mkdirSync(sourceDirectory, { recursive: true })
 const script = path.join(fixture, 'scripts/check-symbol-licenses.mjs')
@@ -30,4 +33,18 @@ assert.match(missing.stderr, /unknown has no release review/)
 const mismatch = run([reviewed], true, [{ ...reviewed, pictogramProvider: 'arasaac' }])
 assert.equal(mismatch.status, 1)
 assert.match(mismatch.stderr, /source-mismatch has no release review/)
+writeFileSync(emergencyPath, JSON.stringify({ assets: [{ id: 'synthetic-emergency', file: 'missing.png', provider: 'Mulberry Symbols', source: 'synthetic', license: 'synthetic', sha256: '0'.repeat(64) }] }))
+const missingEmergency = run([reviewed])
+assert.equal(missingEmergency.status, 1)
+assert.match(missingEmergency.stderr, /Emergency synthetic-emergency file is missing/)
+writeFileSync(path.join(fixture, 'src/assets/emergency/synthetic.png'), 'synthetic image bytes')
+writeFileSync(path.join(fixture, 'compliance/symbol-release-review.json'), JSON.stringify({ providers: {
+  mulberry: { status: 'approved', expectedTileCount: 1 },
+  arasaac: { status: 'pending', expectedTileCount: 0 }
+} }))
+writeFileSync(emergencyPath, JSON.stringify({ assets: [{ id: 'pending-emergency', file: 'synthetic.png', provider: 'ARASAAC', source: 'synthetic', license: 'synthetic', sha256: createHash('sha256').update('synthetic image bytes').digest('hex') }] }))
+assert.equal(run([reviewed], false).status, 0)
+const pendingEmergency = run([reviewed], true)
+assert.equal(pendingEmergency.status, 1)
+assert.match(pendingEmergency.stderr, /Emergency pending-emergency \(arasaac\) is pending/)
 console.log('Reviewed sources pass; unknown, missing provenance and provider mismatch fail closed.')

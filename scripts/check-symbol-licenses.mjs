@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -71,7 +72,7 @@ for (const provider of Object.keys(counts)) {
 }
 
 for (const [provider, decision] of Object.entries(review.providers)) {
-  if (counts[provider] !== decision.expectedTileCount) {
+  if ((counts[provider] || 0) !== decision.expectedTileCount) {
     errors.push(
       `${provider} expected ${decision.expectedTileCount} tiles, found ${counts[provider] || 0}.`
     )
@@ -79,6 +80,25 @@ for (const [provider, decision] of Object.entries(review.providers)) {
 }
 
 const formalRelease = process.argv.includes('--formal-release')
+const emergencyRoot = path.join(projectRoot, 'src/assets/emergency')
+const emergency = JSON.parse(readFileSync(path.join(emergencyRoot, 'manifest.json'), 'utf8'))
+for (const asset of emergency.assets) {
+  const provider = ({ 'Mulberry Symbols': 'mulberry', ARASAAC: 'arasaac' })[asset.provider]
+  const decision = provider && review.providers[provider]
+  if (!decision) errors.push(`Emergency ${asset.id} has no reviewed provider.`)
+  if (path.basename(asset.file) !== asset.file) {
+    errors.push(`Emergency ${asset.id} has an invalid file path.`)
+    continue
+  }
+  const file = path.join(emergencyRoot, asset.file)
+  if (!existsSync(file) || createHash('sha256').update(readFileSync(file)).digest('hex') !== String(asset.sha256).toLowerCase()) {
+    errors.push(`Emergency ${asset.id} file is missing or does not match its provenance hash.`)
+  }
+  if (!asset.source || !asset.license) errors.push(`Emergency ${asset.id} has incomplete provenance.`)
+  if (formalRelease && decision && decision.status !== 'approved') {
+    errors.push(`Emergency ${asset.id} (${provider}) is ${decision.status}; formal release requires approval or replacement.`)
+  }
+}
 if (formalRelease) {
   for (const [provider, decision] of Object.entries(review.providers)) {
     if ((counts[provider] || 0) > 0 && decision.status !== 'approved') {

@@ -804,59 +804,13 @@ export function createCboardAccountPort(
       }
     },
 
-    async deleteConfirmedReceiverRecords(token, recordIds, options = {}) {
-      const normalizedIds = Array.from(
-        new Set(
-          (Array.isArray(recordIds) ? recordIds : [])
-            .map(value => String(value || '').trim())
-            .filter(Boolean)
-        )
-      ).slice(0, 100)
-      if (!options.deleteAll && !normalizedIds.length) {
-        return {
-          ok: true,
-          message: '没有需要删除的接收记录。',
-          value: {
-            deletedCount: 0,
-            deletedRecordIds: [],
-            deletedRecords: []
-          }
-        }
-      }
-
-      const result = await request(
-        '/communication/receiver-records',
-        'DELETE',
-        options.deleteAll
-          ? { deleteAll: true }
-          : { recordIds: normalizedIds },
-        token
-      )
-      if (!result.ok || !result.value) {
-        return { ok: false, message: result.message }
-      }
-      const deletedRecords = normalizeReceiverTombstones(
-        result.value.deletedRecords
-      )
-
-      return {
-        ok: true,
-        message: '接收记录已从云端删除。',
-        value: {
-          deletedCount: Number(result.value.deletedCount) || 0,
-          deletedRecordIds: Array.isArray(result.value.deletedRecordIds)
-            ? Array.from(
-                new Set([
-                  ...result.value.deletedRecordIds,
-                  ...deletedRecords.map(record => record.id)
-                ])
-              )
-                .map(value => String(value || '').trim())
-                .filter(Boolean)
-            : normalizedIds,
-          deletedRecords
-        }
-      }
+    async deleteConfirmedReceiverRecords(_token, recordIds) {
+      // Return local deletion targets without sending history IDs or a cloud purge.
+      const ids = Array.from(new Set((Array.isArray(recordIds) ? recordIds : [])
+        .map(value => String(value || '').trim()).filter(Boolean)))
+      return { ok: true, message: '接收记录仅从本机删除。', value: {
+        deletedCount: ids.length, deletedRecordIds: ids, deletedRecords: []
+      } }
     },
 
     async syncCommunicationSavedPhrases(token, phrases) {

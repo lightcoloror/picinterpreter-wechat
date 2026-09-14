@@ -297,7 +297,7 @@ export function createCommunicationCloudSyncService(options: {
     const localValue = getLocalValue()
     return {
       ok: true,
-      message: '接收记录已删除，并会在其他设备同步移除。',
+      message: '接收记录已从本机删除。',
       value: overwriteLocalValue({
         ...localValue,
         history: removeDeletedReceiverHistory(

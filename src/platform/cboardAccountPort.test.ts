@@ -537,7 +537,7 @@ describe('cboardAccountPort', () => {
     expect(harness.request).not.toHaveBeenCalled()
   })
 
-  test('marks selected receiver records as deleted with the bearer token', async () => {
+  test('deletes receiver history locally without an HTTP request', async () => {
     const harness = createHarness()
     const result = await harness.port.deleteConfirmedReceiverRecords(
       'secret-token',
@@ -545,14 +545,9 @@ describe('cboardAccountPort', () => {
     )
 
     expect(result.ok).toBe(true)
-    expect(harness.request).toHaveBeenLastCalledWith(expect.objectContaining({
-      url: 'https://api.example.test/communication/receiver-records',
-      method: 'DELETE',
-      data: { recordIds: ['receiver-1'] },
-      header: expect.objectContaining({
-        Authorization: 'Bearer secret-token'
-      })
-    }))
+    expect(result.value?.deletedRecordIds).toEqual(['receiver-1'])
+    await harness.port.deleteConfirmedReceiverRecords('', [], { deleteAll: true })
+    expect(harness.request).not.toHaveBeenCalled()
   })
 
   test('syncs saved phrases without sending device-private image data', async () => {

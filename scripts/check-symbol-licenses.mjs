@@ -19,52 +19,16 @@ const inventoryPath = path.join(
   'compliance/symbol-license-inventory.json'
 )
 
-const ARASAAC_LABEL_KEYS = new Set([
-  'cboard.symbol.and',
-  'cboard.symbol.areYou',
-  'cboard.symbol.characters',
-  'cboard.symbol.countries',
-  'cboard.symbol.goodbye',
-  'cboard.symbol.iAm',
-  'cboard.symbol.iHave',
-  'cboard.symbol.iHavePainIn',
-  'cboard.symbol.iLove',
-  'cboard.symbol.iSaw',
-  'cboard.symbol.itIs',
-  'cboard.symbol.letsGoBy',
-  'cboard.symbol.my',
-  'cboard.symbol.please',
-  'cboard.symbol.thankYou',
-  'cboard.symbol.youAre',
-  'cboard.symbol.your'
-])
-
-const CBOARD_LABEL_KEYS = new Set([
-  'cboard.symbol.actions',
-  'cboard.symbol.activities',
-  'cboard.symbol.animals',
-  'cboard.symbol.birds',
-  'cboard.symbol.clothingAccessories',
-  'cboard.symbol.emotions',
-  'cboard.symbol.hygiene',
-  'cboard.symbol.insects',
-  'cboard.symbol.kitchen',
-  'cboard.symbol.marineAnimals',
-  'cboard.symbol.people',
-  'cboard.symbol.plants',
-  'cboard.symbol.position',
-  'cboard.symbol.quickChat',
-  'cboard.symbol.sports',
-  'cboard.symbol.weather',
-  'cboard.symbol.wildAnimals'
-])
-
-function resolveProvider(tile) {
+const sourceBoardsPath = path.resolve(projectRoot, '../cboard/src/api/boards.json')
+const sourceBoards = JSON.parse(readFileSync(sourceBoardsPath, 'utf8')).advanced
+const sourceImages = new Map(Object.values(sourceBoards).flatMap(board =>
+  Object.values(board.tiles).map(tile => [`${board.id}:${tile.id}`, tile.image])
+))
+function resolveProvider(boardId, tile) {
+  const image = sourceImages.get(`${boardId}:${tile.id}`) || ''
+  const provider = /^\/symbols\/([^/]+)\//.exec(image)?.[1] || 'unknown'
   const declared = String(tile.pictogramProvider || '').trim().toLowerCase()
-  if (declared) return declared
-  if (ARASAAC_LABEL_KEYS.has(tile.labelKey)) return 'arasaac'
-  if (CBOARD_LABEL_KEYS.has(tile.labelKey)) return 'cboard'
-  return 'mulberry'
+  return declared && declared !== provider ? 'source-mismatch' : provider
 }
 
 function buildInventory(boards) {
@@ -75,7 +39,8 @@ function buildInventory(boards) {
       tileId: tile.id,
       label: tile.label,
       labelKey: tile.labelKey || '',
-      provider: resolveProvider(tile),
+      provider: resolveProvider(board.id, tile),
+      sourceImage: sourceImages.get(`${board.id}:${tile.id}`) || null,
       originalId: tile.pictogramOriginalId || '',
       image: tile.image
     }))
@@ -98,6 +63,12 @@ const review = JSON.parse(readFileSync(reviewPath, 'utf8'))
 const inventory = buildInventory(boards)
 const counts = countByProvider(inventory)
 const errors = []
+
+for (const provider of Object.keys(counts)) {
+  if (!Object.prototype.hasOwnProperty.call(review.providers, provider)) {
+    errors.push(`${provider} has no release review; add licensing evidence before approval.`)
+  }
+}
 
 for (const [provider, decision] of Object.entries(review.providers)) {
   if (counts[provider] !== decision.expectedTileCount) {

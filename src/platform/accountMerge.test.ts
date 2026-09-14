@@ -53,6 +53,19 @@ function createHarness() {
 }
 
 describe('post-login anonymous account merge', () => {
+  test('care login does not inspect, merge or upload guest data before profile selection', async () => {
+    vi.stubEnv('TARO_APP_CARE_COLLABORATION', 'true')
+    try {
+      const harness = createHarness()
+      const confirm = vi.fn()
+      const result = await runPostLoginAccountMerge({ ...harness, repository: harness.repository as never, confirm })
+      expect(result.ok).toBe(true)
+      expect(confirm).not.toHaveBeenCalled()
+      expect(harness.cloudSync.sync).not.toHaveBeenCalled()
+      expect(harness.repository.getAnonymousAccountMergeState).not.toHaveBeenCalled()
+      expect(harness.repository.loadCommunicationHistory).not.toHaveBeenCalled()
+    } finally { vi.unstubAllEnvs() }
+  })
   test('shows accurate local counts and private-data boundaries', () => {
     const harness = createHarness()
     const snapshot = createAccountMergeSnapshot(harness.repository as never)

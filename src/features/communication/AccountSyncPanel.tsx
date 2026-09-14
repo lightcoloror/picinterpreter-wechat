@@ -345,7 +345,9 @@ export default function AccountSyncPanel({
       <View className='account-sync__heading'>
         <Text className='account-sync__title'>CBoard 账号与云同步</Text>
         <Text className='account-sync__hint'>
-          未登录仍可离线沟通；首次登录会先确认是否合并公共常用语、文字历史和确认接收记录。私人图片、家属修正和录音不会随账号同步上传。
+          {process.env.TARO_APP_CARE_COLLABORATION === 'true'
+            ? '未登录仍可离线沟通。登录后选择患者档案，按权限同步图库、沟通偏好和收藏；访客资料不自动合并，普通历史只保存在本机。'
+            : '未登录仍可离线沟通；首次登录会先确认是否合并公共常用语、文字历史和确认接收记录。私人图片、家属修正和录音不会随账号同步上传。'}
         </Text>
       </View>
 
@@ -732,9 +734,9 @@ export default function AccountSyncPanel({
             {busy
               ? '请稍候'
               : mode === 'login'
-                ? '登录并合并'
+                ? (process.env.TARO_APP_CARE_COLLABORATION === 'true' ? '登录' : '登录并合并')
                 : mode === 'phone-login'
-                  ? '手机号登录并合并'
+                  ? (process.env.TARO_APP_CARE_COLLABORATION === 'true' ? '手机号登录' : '手机号登录并合并')
                   : mode === 'phone-reset'
                     ? '重置密码'
                     : '注册账号'}

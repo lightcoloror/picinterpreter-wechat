@@ -328,6 +328,11 @@ export default function CommunicationManagementPage() {
       return false
     }
     setAccountSession(session)
+    if (process.env.TARO_APP_CARE_COLLABORATION === 'true') {
+      setAccountNotice('登录成功，正在选择患者档案。')
+      await Taro.reLaunch({ url: '/pages/index/index' })
+      return true
+    }
     const syncResult = await runPostLoginAccountMerge({
       session,
       repository: repositoryRef.current,

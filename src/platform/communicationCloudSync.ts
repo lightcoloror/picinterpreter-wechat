@@ -229,6 +229,9 @@ export function createCommunicationCloudSyncService(options: {
   const syncReceiverRecords = async (
     token: string
   ): Promise<CommunicationReceiverSyncResult> => {
+    if (process.env.TARO_APP_CARE_COLLABORATION === 'true') {
+      return { ok: true, message: '普通历史只保存在本机。', conflictCount: 0, value: getLocalValue() }
+    }
     const localRecords = options.repository.loadReceiverRecords()
     const remote = await options.settingsPort.syncConfirmedReceiverRecords(
       token,
@@ -278,6 +281,13 @@ export function createCommunicationCloudSyncService(options: {
     recordIds: string[],
     deleteOptions: { deleteAll?: boolean } = {}
   ): Promise<CboardApiResult<CommunicationCloudValue>> => {
+    if (process.env.TARO_APP_CARE_COLLABORATION === 'true') {
+      const records = options.repository.loadReceiverRecords()
+      const ids = deleteOptions.deleteAll ? records.map(record => record.id).filter(Boolean) as string[] : recordIds
+      options.repository.overwriteReceiverRecords(mergeConfirmedReceiverRecords(records, [], ids))
+      options.repository.overwriteCommunicationHistory(removeDeletedReceiverHistory(getLocalValue().history, ids))
+      return { ok: true, message: '接收记录已从本机删除。', value: getLocalValue() }
+    }
     const remote = await options.settingsPort.deleteConfirmedReceiverRecords(
       token,
       recordIds,
@@ -313,6 +323,9 @@ export function createCommunicationCloudSyncService(options: {
     syncReceiverRecords,
 
     async sync(token, syncOptions = {}) {
+      if (process.env.TARO_APP_CARE_COLLABORATION === 'true' && !careAdapter?.active()) {
+        return { ok: false, message: '请先选择患者档案；普通历史不会上传。' }
+      }
       if (careAdapter?.active()) {
         try { await careAdapter.sync(); return { ok: true, message: '患者资料已同步；普通历史只保存在本机。', value: getLocalValue() } }
         catch (error) { return { ok: false, message: error instanceof Error ? error.message : '暂时无法同步，修改保留在本机。' } }
@@ -393,6 +406,9 @@ export function createCommunicationCloudSyncService(options: {
     },
 
     async upload(token, syncOptions = {}) {
+      if (process.env.TARO_APP_CARE_COLLABORATION === 'true' && !careAdapter?.active()) {
+        return { ok: false, message: '请先选择患者档案；普通历史不会上传。' }
+      }
       if (careAdapter?.active()) {
         try { await careAdapter.sync(); return { ok: true, message: '患者资料已同步；普通历史只保存在本机。', value: getLocalValue() } }
         catch (error) { return { ok: false, message: error instanceof Error ? error.message : '暂时无法同步，修改保留在本机。' } }

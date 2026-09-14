@@ -2,6 +2,19 @@ import { describe, expect, test, vi } from 'vitest'
 
 import { createCommunicationCloudSyncService } from './communicationCloudSync'
 
+test('care mode without an active profile never falls back to legacy network routes', async () => {
+  vi.stubEnv('TARO_APP_CARE_COLLABORATION', 'true')
+  try {
+    const harness = createHarness()
+    expect((await harness.service.sync('token')).ok).toBe(false)
+    expect((await harness.service.upload('token')).ok).toBe(false)
+    expect((await harness.service.syncReceiverRecords('token')).ok).toBe(true)
+    expect((await harness.service.deleteReceiverRecords('token', [], { deleteAll: true })).ok).toBe(true)
+    for (const request of Object.values(harness.settingsPort)) expect(request).not.toHaveBeenCalled()
+    expect(harness.repository.loadReceiverRecords()).toEqual([])
+  } finally { vi.unstubAllEnvs() }
+})
+
 function createHarness() {
   let savedPhrases = [{
     id: 'phrase-local',

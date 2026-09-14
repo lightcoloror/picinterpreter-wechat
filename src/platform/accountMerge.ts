@@ -84,6 +84,9 @@ export async function runPostLoginAccountMerge(options: {
   cloudSync: Pick<CommunicationCloudSyncService, 'sync'>
   confirm: (dialog: AccountMergeDialog) => Promise<boolean>
 }): Promise<CboardApiResult<CommunicationCloudValue>> {
+  if (process.env.TARO_APP_CARE_COLLABORATION === 'true') {
+    return { ok: true, message: '请进入患者档案；访客资料不会自动合并，普通历史只保存在本机。' }
+  }
   const accountUserId = String(options.session.user.id || '').trim()
   if (!accountUserId) {
     return {

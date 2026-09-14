@@ -7,9 +7,11 @@ const h = vi.hoisted(() => ({
   save: vi.fn(),
   clear: vi.fn(),
   request: vi.fn(),
+  navigateBack: vi.fn(),
+  redirectTo: vi.fn(),
   apiBase: ''
 }))
-vi.mock('@tarojs/taro', () => ({ default: { request: h.request } }))
+vi.mock('@tarojs/taro', () => ({ default: { request: h.request, navigateBack: h.navigateBack, redirectTo: h.redirectTo } }))
 vi.mock('./taroCboardAccountPort', () => ({ taroCboardSessionStore: {
   load: () => h.account ? { user: { id: h.account }, token: h.token } : null,
   clear: h.clear
@@ -24,9 +26,17 @@ afterEach(() => {
   h.save.mockClear()
   h.clear.mockClear()
   h.request.mockReset()
+  h.navigateBack.mockReset()
+  h.redirectTo.mockReset()
   h.account = 'first'
   h.token = 'synthetic'
   h.apiBase = ''
+})
+test('anonymous Care navigation redirects to the existing account page', async () => {
+  await runtime.openAccount()
+  expect(h.redirectTo).toHaveBeenCalledWith({ url: '/packages/management/pages/index/index' })
+  expect(h.navigateBack).not.toHaveBeenCalled()
+  expect(h.clear).not.toHaveBeenCalled()
 })
 test.each([false, true])('settings cannot save a prior account selection after an asynchronous response (network failure=%s)', async offline => {
   vi.spyOn(runtime, 'request').mockImplementation(async () => {

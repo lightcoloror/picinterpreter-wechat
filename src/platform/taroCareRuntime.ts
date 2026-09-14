@@ -25,6 +25,7 @@ function requestError(status: number, data: unknown) {
 export const runtime = {
   enabled: process.env.TARO_APP_CARE_COLLABORATION === 'true',
   identity,
+  openAccount: () => Taro.redirectTo({ url: '/packages/management/pages/index/index' }),
   randomBytes: async (length: number) => new Uint8Array((await Taro.getRandomValues({ length })).randomValues),
   funding(profileId: string) { const who = identity(); return who ? Taro.getStorageSync(`care-funding-v1:${who.id}:${profileId}`) : null },
   setFunding(profileId: string, fundingId: string) { const who = identity(); if (who) Taro.setStorageSync(`care-funding-v1:${who.id}:${profileId}`, fundingId) },

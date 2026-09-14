@@ -63,3 +63,23 @@ test('offline restored profiles persist local changes without calling cloud sync
     h.context.accountId = 'synthetic-account'
   }
 })
+
+test('persisted favorite baseline skips read-only usage changes and preserves unseen remote favorites', async () => {
+  h.values.clear()
+  h.engine.edit.mockClear()
+  h.engine.edit.mockImplementation(async () => undefined)
+  const before = { id: 'shared', sentence: '原收藏', createdAt: 1, output: [] }
+  const resources = h.engine.view().resources
+  resources['personalFavorite:shared'] = { kind: 'personalFavorite', id: 'shared', value: { sentence: '原收藏' } }
+  resources['personalFavorite:remote'] = { kind: 'personalFavorite', id: 'remote', value: { sentence: '远端后来新增' } }
+  h.values.set(h.scoped('care-pending-favorites'), JSON.stringify({
+    base: [before],
+    items: [{ ...before, usageCount: 1, lastUsedAt: 4, updatedAt: 4 },
+      { id: 'new', sentence: '新收藏', output: [], createdAt: 2 }]
+  }))
+  const { synchronizeCareWorkspace } = await import('./taroCareWorkspace')
+  await synchronizeCareWorkspace()
+  expect(h.engine.edit).toHaveBeenCalledTimes(1)
+  expect(h.engine.edit).toHaveBeenCalledWith('personalFavorite', 'new', expect.objectContaining({ sentence: '新收藏' }))
+  expect(h.values.has(h.scoped('care-pending-favorites'))).toBe(false)
+})

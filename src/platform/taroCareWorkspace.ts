@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { createCareSync } from '@cboard-communication-core/careSync'
 import { projectCareBoards, queueCareBoards } from '@cboard-communication-core/careProjection'
 import { encodeCareMedia, decodeCareMedia } from '@cboard-communication-core/careMediaValues'
+import { sameCareFavoriteContent } from '@cboard-communication-core/careFavoriteChanges'
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
 import { runtime } from './taroCareRuntime'
@@ -82,14 +83,18 @@ export async function synchronizeCareWorkspace() {
       const favorites = Taro.getStorageSync(favoriteKey)
       if (favorites) {
         const kind = context.selection?.relationship?.role === 'patient' ? 'favorite' : 'personalFavorite'
-        const items = JSON.parse(String(favorites))
+        const packet = JSON.parse(String(favorites))
+        const items = Array.isArray(packet) ? packet : packet.items
+        const base = Array.isArray(packet) ? undefined : packet.base
         for (const item of items) {
+          const original = base?.find((entry: any) => entry.id === item.id)
+          if (original && sameCareFavoriteContent(original, item)) continue
           const old = engine.view().resources[`${kind}:${item.id}`]
           const value = await encodeCareMedia(item, engine, readImage)
           if (!old || JSON.stringify(old.value) !== JSON.stringify(value)) await engine.edit(kind, item.id, value)
         }
         const ids = new Set(items.map((item: any) => item.id))
-        for (const r of Object.values(engine.view().resources) as any[]) if (r.kind === kind && !r.deleted && !ids.has(r.id)) await engine.edit(kind, r.id, null, 'delete')
+        for (const r of Object.values(engine.view().resources) as any[]) if (r.kind === kind && !r.deleted && !ids.has(r.id) && (!base || base.some((entry: any) => entry.id === r.id))) await engine.edit(kind, r.id, null, 'delete')
         if (Taro.getStorageSync(favoriteKey) === favorites) Taro.removeStorageSync(favoriteKey)
       }
       const prefKey = scoped('care-pending-personalImagePreferences')

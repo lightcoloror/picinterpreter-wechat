@@ -1,11 +1,13 @@
 import Taro from '@tarojs/taro'
 import type { CommunicationRepository } from '@cboard-communication-core/repository'
+import { sameCareFavoriteList } from '@cboard-communication-core/careFavoriteChanges'
 
 import { createWechatCommunicationRepository } from './communicationRepository'
-import { careScopedKey, currentCareContext, markCareLocalChange } from './taroCareContext'
+import { careScopedKey, currentCareContext, markCareLocalChange, withCareHydration } from './taroCareContext'
 
 export function createTaroCommunicationRepository(): CommunicationRepository {
-  const repository = createWechatCommunicationRepository({
+  // Repository schema initialization is local, not a user-requested cloud edit.
+  const repository = withCareHydration(() => createWechatCommunicationRepository({
     getStorageSync: key => {
       const context = currentCareContext()
       if (context?.profileId && key === 'cboard_communication_patient_id') return context.profileId
@@ -13,12 +15,26 @@ export function createTaroCommunicationRepository(): CommunicationRepository {
       return Taro.getStorageSync(careScopedKey(key))
     },
     setStorageSync: (key, value) => {
+      const previous = key === 'cboard_communication_saved_phrases'
+        ? Taro.getStorageSync(careScopedKey(key)) : null
       Taro.setStorageSync(careScopedKey(key), value)
-      if (key === 'cboard_communication_saved_phrases') markCareLocalChange('favorites', JSON.parse(String(value)))
+      if (key === 'cboard_communication_saved_phrases') {
+        const items = JSON.parse(String(value))
+        const base = previous ? JSON.parse(String(previous)) : []
+        if (!sameCareFavoriteList(base, items)) {
+          const pending = Taro.getStorageSync(careScopedKey('care-pending-favorites'))
+          const packet = pending ? JSON.parse(String(pending)) : null
+          // Preserve the original baseline through rapid saves and restarts.
+          // Legacy pending arrays have no reliable baseline; retain compatibility.
+          markCareLocalChange('favorites', {
+            items, base: packet ? packet.base : base
+          })
+        }
+      }
       if (key === 'cboard_communication_personal_image_preferences') markCareLocalChange('personalImagePreferences', JSON.parse(String(value)))
     },
     removeStorageSync: key => Taro.removeStorageSync(careScopedKey(key))
-  })
+  }))
   return { ...repository, loadCommunicationIdentity() {
     const context = currentCareContext()
     return context?.profileId ? { patientId: context.profileId, workspaceId: context.familyId } : repository.loadCommunicationIdentity()

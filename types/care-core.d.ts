@@ -49,3 +49,7 @@ declare module '@cboard-communication-core/careMediaValues' {
   export function encodeCareMedia(value: any, engine: CareEngine, readImage: (source: string) => Promise<any>): Promise<any>
   export function decodeCareMedia(value: any, media: Record<string, any>, image: (asset: any) => string): any
 }
+declare module '@cboard-communication-core/careFavoriteChanges' {
+  export function sameCareFavoriteContent(left: object, right: object): boolean
+  export function sameCareFavoriteList(left: object[], right: object[]): boolean
+}

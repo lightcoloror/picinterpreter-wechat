@@ -25,8 +25,9 @@ export function careScopedKey(key: string) {
 }
 let hydrating = false
 export function withCareHydration<T>(operation: () => T): T {
+  const previous = hydrating
   hydrating = true
-  try { return operation() } finally { hydrating = false }
+  try { return operation() } finally { hydrating = previous }
 }
 export function markCareLocalChange(kind: string, value: unknown) {
   const context = currentCareContext()

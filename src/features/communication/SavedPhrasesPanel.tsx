@@ -2,6 +2,7 @@ import { Button, ScrollView, Text, View } from '@tarojs/components'
 import type { CommunicationSavedPhraseEntry } from '@cboard-communication-core/repository'
 
 import PictogramImage from '../../components/PictogramImage'
+import { isCareSharedPhrase } from '@cboard-communication-core/careSharedPhrases'
 
 interface SavedPhrasesPanelProps {
   items: CommunicationSavedPhraseEntry[]
@@ -28,7 +29,7 @@ export default function SavedPhrasesPanel({
         <ScrollView scrollX className='saved-phrases-scroll'>
           <View className='saved-phrases-list'>
             {items.map(item => (
-              <View className='saved-phrase-card' key={item.sentence}>
+              <View className='saved-phrase-card' key={`${isCareSharedPhrase(item) ? 'shared' : 'own'}:${item.id || item.sentence}`}>
                 <View className='saved-phrase-card__images'>
                   {item.output.slice(0, 4).map((tile, index) => (
                     <PictogramImage
@@ -42,6 +43,7 @@ export default function SavedPhrasesPanel({
                   ))}
                 </View>
                 <Text className='saved-phrase-card__sentence'>{item.sentence}</Text>
+                {isCareSharedPhrase(item) && <Text>家庭共享</Text>}
                 <View className='saved-phrase-card__actions'>
                   <Button
                     className='saved-phrase-card__play'

@@ -4,6 +4,7 @@ import { createCareSync } from '@cboard-communication-core/careSync'
 import { projectCareBoards, queueCareBoards } from '@cboard-communication-core/careProjection'
 import { encodeCareMedia, decodeCareMedia } from '@cboard-communication-core/careMediaValues'
 import { sameCareFavoriteContent } from '@cboard-communication-core/careFavoriteChanges'
+import { projectCareSharedPhrases } from '@cboard-communication-core/careSharedPhrases'
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
 import { runtime } from './taroCareRuntime'
@@ -17,6 +18,10 @@ import { taroPictogramOrderingStore } from './taroPictogramOrderingStore'
 let active: { key: string; engine: ReturnType<typeof createCareSync> } | null = null
 let pending: Promise<void> | null = null
 let stopWatch: (() => void) | null = null
+export function loadCareSharedPhrases() {
+  if (!currentCareContext()?.profileId || Taro.getStorageSync(careScopedKey('care-locked'))) return []
+  return Taro.getStorageSync(careScopedKey('care-shared-favorites')) || []
+}
 async function readImage(source: string) {
   const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(source)
   const bytes = match ? new Uint8Array(Taro.base64ToArrayBuffer(match[2]))
@@ -29,6 +34,7 @@ async function readImage(source: string) {
 function project(engine: ReturnType<typeof createCareSync>) {
   const snapshot = engine.view()
   Taro.setStorageSync(careScopedKey('care-locked'), snapshot.locked)
+  if (snapshot.locked) Taro.setStorageSync(careScopedKey('care-shared-favorites'), [])
   if (!snapshot.locked) {
     const image = (asset: any) => {
       const path = `${Taro.env.USER_DATA_PATH}/care-picture-${bytesToHex(sha256(careScopedKey(asset.mediaId)))}.${asset.type === 'image/jpeg' ? 'jpg' : asset.type.split('/')[1]}`
@@ -36,6 +42,7 @@ function project(engine: ReturnType<typeof createCareSync>) {
       return path
     }
     const boards = projectCareBoards(snapshot, image)
+    Taro.setStorageSync(careScopedKey('care-shared-favorites'), projectCareSharedPhrases(snapshot, currentCareContext()?.selection?.relationship?.role, image))
     withCareHydration(() => {
       const defaults: Record<string, unknown> = {}
       for (const name of ['speechRate', 'fontSize', 'cardDensity']) {

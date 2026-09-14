@@ -35,7 +35,8 @@ import type {
   PictogramOrderingState
 } from '@cboard-communication-core/pictogramOrdering'
 import type { CboardAccountSession } from '../../platform/cboardAccountPort'
-import { useCareRefresh } from '../../platform/taroCareWorkspace'
+import { useCareRefresh, loadCareSharedPhrases } from '../../platform/taroCareWorkspace'
+import { isCareSharedPhrase } from '@cboard-communication-core/careSharedPhrases'
 import { taroCboardSessionStore } from '../../platform/taroCboardAccountPort'
 import { taroCommunicationNavigationIntent } from '../../platform/taroCommunicationNavigationIntent'
 import { taroCommunicationPreferencesStore } from '../../platform/taroCommunicationPreferencesStore'
@@ -201,6 +202,7 @@ export default function CommunicationPage() {
   ].filter(Boolean).join(' ')
 
   const markPhraseUsed = (entry: CommunicationSavedPhraseEntry) => {
+    if (isCareSharedPhrase(entry)) return
     if (!entry.id) return
     const result = markCommunicationSavedPhraseUsed(
       repositoryRef.current.loadCommunicationSavedPhrases(),
@@ -566,7 +568,7 @@ export default function CommunicationPage() {
         boards={communicationBoards}
         session={expressionSession}
         dispatch={expressionDispatch}
-        savedPhrases={getCommunicationQuickPhrases(savedPhraseItems, 6)}
+        savedPhrases={[...getCommunicationQuickPhrases(savedPhraseItems, 6), ...loadCareSharedPhrases()]}
         conversationContext={repositoryRef.current.loadConversationContext({
           sessionId: conversationSession.id,
           maxTurns: 6

@@ -11,6 +11,17 @@ export const identity = () => {
   const s = taroCboardSessionStore.load()
   return s?.user.id ? { id: s.user.id, token: s.token } : null
 }
+
+function requestError(status: number, data: unknown) {
+  const message = status === 401
+    ? '登录已失效，请重新登录。'
+    : status === 403
+      ? '当前账号无权访问此患者资料。'
+      : status === 503
+        ? '云端服务暂时不可用，请稍后重试。'
+        : '连接失败'
+  return Object.assign(new Error(message), { status, data })
+}
 export const runtime = {
   enabled: process.env.TARO_APP_CARE_COLLABORATION === 'true',
   identity,
@@ -71,8 +82,14 @@ export const runtime = {
     if (!base) throw new Error('云端服务尚未配置')
     const response = await Taro.request({ url: base.replace(/\/$/, '') + path, method, data: body,
       timeout: 20000, header: { 'Content-Type': 'application/json', Authorization: `Bearer ${who.token}` } })
-    if (response.statusCode < 200 || response.statusCode >= 300) throw Object.assign(
-      new Error((response.data as any)?.code || '连接失败'), { status: response.statusCode, data: response.data })
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      // A delayed response from an older login must never clear a newer session.
+      if (response.statusCode === 401) {
+        const current = identity()
+        if (current?.id === who.id && current.token === who.token) taroCboardSessionStore.clear()
+      }
+      throw requestError(response.statusCode, response.data)
+    }
     return response.data
   },
   watch(callback: () => void) {

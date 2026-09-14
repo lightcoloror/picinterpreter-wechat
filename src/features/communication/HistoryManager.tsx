@@ -60,7 +60,7 @@ export default function HistoryManager({
   onItemsChange,
   onRecordReceiverCorrection
 }: HistoryManagerProps) {
-  const [notice, setNotice] = useState('最多保留并显示最近 100 条。')
+  const [notice, setNotice] = useState('本机保留最近 50 条已完成沟通，表达与接收合计；收藏独立保存。')
   const [confirmClear, setConfirmClear] = useState(false)
   const [receiverReview, setReceiverReview] =
     useState<HistoryReceiverReviewState | null>(null)

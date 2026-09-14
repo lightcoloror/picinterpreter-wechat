@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import { createCommunicationAiPort } from './communicationAiPort'
+import { buildCommunicationAiSentenceRequest } from '@cboard-communication-core/communicationAi'
 
 function createHarness(options: { apiBaseUrl?: string; token?: string } = {}) {
   const request = vi.fn(async ({ url }: { url: string }) => {
@@ -114,6 +115,31 @@ function createHarness(options: { apiBaseUrl?: string; token?: string } = {}) {
 }
 
 describe('communicationAiPort', () => {
+  test('keeps stored conversation out of the expression request passed to the transport', async () => {
+    const harness = createHarness()
+    const built = buildCommunicationAiSentenceRequest({
+      output: [{ id: 'water', label: '水' }],
+      context: {
+        scene: 'rehab_clinic',
+        turns: [{ direction: 'express', text: 'PRIVATE_HISTORY_SENTINEL',
+          candidateFeedback: [{ sentence: 'PRIVATE_FEEDBACK_SENTINEL', feedback: 'up' }] }],
+        recentSentences: ['PRIVATE_HISTORY_SENTINEL']
+      }
+    })
+    await harness.port.generateSentences({
+      pictogramLabels: built.pictogramLabels,
+      candidateCount: built.candidateCount,
+      scene: built.context.scene,
+      recentSentences: built.context.recentSentences,
+      candidateFeedback: built.context.candidateFeedback
+    })
+    expect(harness.request).toHaveBeenCalledOnce()
+    const sent = harness.request.mock.calls[0][0].data as Record<string, unknown>
+    expect(sent.pictogramLabels).toEqual(['水'])
+    expect(sent.context).toEqual(expect.objectContaining({ scene: 'rehab_clinic', recentSentences: [], candidateFeedback: [] }))
+    expect(JSON.stringify(sent)).not.toContain('PRIVATE_')
+  })
+
   test('keeps the server token in the Authorization header and bounds labels', async () => {
     const harness = createHarness()
     const result = await harness.port.generateSentences({

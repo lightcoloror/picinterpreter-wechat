@@ -217,9 +217,17 @@ export default function ReceiverPage() {
     intent?: Parameters<typeof taroCommunicationNavigationIntent.save>[0]
   ) => {
     if (intent) taroCommunicationNavigationIntent.save(intent)
-    void Taro.navigateBack({ delta: 1 }).catch(() =>
-      Taro.reLaunch({ url: '/pages/index/index' })
-    )
+    const patientUrl = '/packages/caregiver/pages/patient/index'
+    const pages = Taro.getCurrentPages()
+    const previousRoute = pages[pages.length - 2]?.route
+    if (previousRoute === patientUrl.slice(1)) {
+      void Taro.navigateBack({ delta: 1 }).catch(() =>
+        Taro.redirectTo({ url: patientUrl })
+      )
+    } else {
+      // Explicit mode switching must not reapply the account's launch default.
+      void Taro.redirectTo({ url: patientUrl })
+    }
   }
 
   const openImageTextRecognition = () => {

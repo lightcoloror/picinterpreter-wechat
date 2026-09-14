@@ -87,6 +87,10 @@ export interface CboardPasswordResetResult {
   requested: true
 }
 
+export interface CboardVerificationResendResult {
+  accepted: true
+}
+
 export interface CboardPhonePasswordResetResult {
   reset: true
 }
@@ -165,6 +169,9 @@ export interface CboardAccountPort {
   requestPasswordReset(input: {
     email: string
   }): Promise<CboardApiResult<CboardPasswordResetResult>>
+  resendVerificationEmail(input: {
+    email: string
+  }): Promise<CboardApiResult<CboardVerificationResendResult>>
   resetPasswordWithPhone(input: {
     phone: string
     phoneVerificationToken: string
@@ -268,6 +275,21 @@ function getServerMessage(value: unknown, fallback: string) {
 }
 
 function getRequestError(path: string, statusCode: number, data: unknown) {
+  if (path === '/user/resend-verification') {
+    if (statusCode === 429) {
+      return '请求过于频繁，请稍后再试。'
+    }
+    const response = asObject(data)
+    const error = asObject(response.error)
+    if (
+      statusCode === 503 &&
+      (response.code === 'MAIL_SERVICE_UNAVAILABLE' ||
+        error.code === 'MAIL_SERVICE_UNAVAILABLE')
+    ) {
+      return '邮件验证服务暂不可用，请稍后再试。'
+    }
+    return getServerMessage(data, '验证邮件暂时无法受理，请稍后再试。')
+  }
   if (statusCode === 401 || statusCode === 403) {
     if (path === '/user/login/phone') {
       return '无法使用此手机号登录，请确认手机号已注册并重新获取验证码。'
@@ -679,6 +701,23 @@ export function createCboardAccountPort(
         ok: true,
         message: '如果该邮箱已注册，密码重置邮件将很快发送，请检查收件箱和垃圾邮件。',
         value: { requested: true }
+      }
+    },
+
+    async resendVerificationEmail(input) {
+      const email = validateEmail(input.email)
+      if (!email) {
+        return {
+          ok: false,
+          message: '请输入有效邮箱后再重新发送验证邮件。'
+        }
+      }
+      const result = await request('/user/resend-verification', 'POST', { email })
+      if (!result.ok) return { ok: false, message: result.message }
+      return {
+        ok: true,
+        message: '请求已受理；如有待验证账号，请检查邮箱或稍后再试。此提示不代表邮件已经送达。',
+        value: { accepted: true }
       }
     },
 

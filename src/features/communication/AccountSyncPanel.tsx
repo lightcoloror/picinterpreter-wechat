@@ -57,6 +57,9 @@ interface AccountSyncPanelProps {
   onRequestPasswordReset: (input: {
     email: string
   }) => Promise<boolean>
+  onResendVerificationEmail: (input: {
+    email: string
+  }) => Promise<boolean>
   onResetPasswordWithPhone: (input: {
     phone: string
     phoneVerificationToken: string
@@ -80,6 +83,7 @@ export default function AccountSyncPanel({
   onRequestPhoneVerification,
   onConfirmPhoneVerification,
   onRequestPasswordReset,
+  onResendVerificationEmail,
   onResetPasswordWithPhone,
   onDeleteAccount,
   onLogout,
@@ -742,14 +746,24 @@ export default function AccountSyncPanel({
                     : '注册账号'}
           </Button>
           {mode === 'login' && (
-            <Button
-              id='account-password-reset-button'
-              className='button button--quiet account-sync__password-reset'
-              disabled={busy || !configured}
-              onClick={() => void onRequestPasswordReset({ email })}
-            >
-              忘记密码？发送重置邮件
-            </Button>
+            <>
+              <Button
+                id='account-password-reset-button'
+                className='button button--quiet account-sync__password-reset'
+                disabled={busy || !configured}
+                onClick={() => void onRequestPasswordReset({ email })}
+              >
+                忘记密码？发送重置邮件
+              </Button>
+              <Button
+                id='account-verification-resend-button'
+                className='button button--quiet account-sync__password-reset'
+                disabled={busy || !configured}
+                onClick={() => void onResendVerificationEmail({ email })}
+              >
+                重新发送验证邮件
+              </Button>
+            </>
           )}
         </View>
       )}

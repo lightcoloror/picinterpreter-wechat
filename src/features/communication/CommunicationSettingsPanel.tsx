@@ -90,6 +90,9 @@ interface CommunicationSettingsPanelProps {
   onAccountRequestPasswordReset: (input: {
     email: string
   }) => Promise<boolean>
+  onAccountResendVerificationEmail: (input: {
+    email: string
+  }) => Promise<boolean>
   onAccountResetPasswordWithPhone: (input: {
     phone: string
     phoneVerificationToken: string
@@ -155,6 +158,7 @@ export default function CommunicationSettingsPanel({
   onRequestPhoneVerification,
   onConfirmPhoneVerification,
   onAccountRequestPasswordReset,
+  onAccountResendVerificationEmail,
   onAccountResetPasswordWithPhone,
   onAccountDelete,
   onAccountLogout,
@@ -217,6 +221,7 @@ export default function CommunicationSettingsPanel({
         onRequestPhoneVerification={onRequestPhoneVerification}
         onConfirmPhoneVerification={onConfirmPhoneVerification}
         onRequestPasswordReset={onAccountRequestPasswordReset}
+        onResendVerificationEmail={onAccountResendVerificationEmail}
         onResetPasswordWithPhone={onAccountResetPasswordWithPhone}
         onDeleteAccount={onAccountDelete}
         onLogout={onAccountLogout}

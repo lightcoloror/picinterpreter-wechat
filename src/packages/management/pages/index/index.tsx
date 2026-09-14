@@ -428,6 +428,18 @@ export default function CommunicationManagementPage() {
     }
   }
 
+  const resendVerificationEmail = async (input: { email: string }) => {
+    if (accountBusy) return false
+    setAccountBusy(true)
+    try {
+      const result = await taroCboardAccountPort.resendVerificationEmail(input)
+      setAccountNotice(result.message)
+      return result.ok
+    } finally {
+      setAccountBusy(false)
+    }
+  }
+
   const resetPasswordWithPhone = async (input: {
     phone: string
     phoneVerificationToken: string
@@ -777,6 +789,7 @@ export default function CommunicationManagementPage() {
           onRequestPhoneVerification={requestPhoneVerification}
           onConfirmPhoneVerification={confirmPhoneVerification}
           onAccountRequestPasswordReset={requestPasswordReset}
+          onAccountResendVerificationEmail={resendVerificationEmail}
           onAccountResetPasswordWithPhone={resetPasswordWithPhone}
           onAccountDelete={deleteAccount}
           onAccountLogout={logoutAccount}

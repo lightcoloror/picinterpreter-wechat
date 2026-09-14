@@ -89,6 +89,12 @@ function createHarness(apiBaseUrl = 'https://api.example.test') {
         data: { message: 'Check your email.' }
       }
     }
+    if (url.endsWith('/user/resend-verification')) {
+      return {
+        statusCode: 202,
+        data: { success: 1, message: 'Request accepted.' }
+      }
+    }
     return { statusCode: 200, data: { language: 'zho' } }
   })
 
@@ -368,6 +374,58 @@ describe('cboardAccountPort', () => {
     expect(result.ok).toBe(false)
     expect(result.message).toContain('有效邮箱')
     expect(harness.request).not.toHaveBeenCalled()
+  })
+
+  test('resends verification email with normalized email and never claims delivery', async () => {
+    const harness = createHarness()
+    const result = await harness.port.resendVerificationEmail({
+      email: ' CARE@example.test '
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      message:
+        '请求已受理；如有待验证账号，请检查邮箱或稍后再试。此提示不代表邮件已经送达。',
+      value: { accepted: true }
+    })
+    expect(harness.request).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'https://api.example.test/user/resend-verification',
+      method: 'POST',
+      data: { email: 'care@example.test' },
+      header: { 'Content-Type': 'application/json' }
+    }))
+  })
+
+  test('maps resend service unavailable and rate limit errors to readable Chinese', async () => {
+    const harness = createHarness()
+    harness.request
+      .mockResolvedValueOnce({
+        statusCode: 503,
+        data: {
+          message: 'Email service is unavailable.',
+          error: { code: 'MAIL_SERVICE_UNAVAILABLE' }
+        }
+      })
+      .mockResolvedValueOnce({
+        statusCode: 429,
+        data: { code: 'EMAIL_VERIFICATION_RATE_LIMITED' }
+      })
+
+    const unavailable = await harness.port.resendVerificationEmail({
+      email: 'care@example.test'
+    })
+    const limited = await harness.port.resendVerificationEmail({
+      email: 'care@example.test'
+    })
+
+    expect(unavailable).toEqual({
+      ok: false,
+      message: '邮件验证服务暂不可用，请稍后再试。'
+    })
+    expect(limited).toEqual({
+      ok: false,
+      message: '请求过于频繁，请稍后再试。'
+    })
   })
 
   test('deletes the current CBoard account with owner authentication', async () => {

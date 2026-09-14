@@ -733,7 +733,6 @@ export default function CommunicationManagementPage() {
           boards={personalizedBoards}
           receiverCorrections={receiverCorrections}
           speechRate={preferences.speechRate}
-          candidateFeedbackSyncAvailable={Boolean(accountSession)}
           onItemsChange={updateManagedHistory}
           onRecordReceiverCorrection={recordReceiverCorrection}
         />

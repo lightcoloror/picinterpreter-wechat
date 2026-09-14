@@ -45,7 +45,6 @@ interface HistoryManagerProps {
   boards: BoardDTO[]
   receiverCorrections: ReceiverCorrectionEntry[]
   speechRate: number
-  candidateFeedbackSyncAvailable: boolean
   onItemsChange: (items: CommunicationHistoryEntry[]) => void
   onRecordReceiverCorrection: (entry: ReceiverCorrectionEntry) => boolean
 }
@@ -56,7 +55,6 @@ export default function HistoryManager({
   boards,
   receiverCorrections,
   speechRate,
-  candidateFeedbackSyncAvailable,
   onItemsChange,
   onRecordReceiverCorrection
 }: HistoryManagerProps) {
@@ -168,11 +166,7 @@ export default function HistoryManager({
         feedback
       )
     )
-    setNotice(
-      candidateFeedbackSyncAvailable
-        ? '候选句反馈已保存，并会纳入下次云同步。'
-        : '候选句反馈已保存在本机，登录后可同步。'
-    )
+    setNotice('候选句反馈已保存在本机，不随普通沟通历史上传。')
   }
 
   const getDisplayItem = (

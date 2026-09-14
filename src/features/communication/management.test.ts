@@ -52,6 +52,47 @@ function createRepository(): CommunicationRepository {
 }
 
 describe('WeChat communication management service', () => {
+  test('favorites the corrected receiver image snapshot independently', () => {
+    const repository = createRepository()
+    repository.overwriteCommunicationHistory([{
+      ...repository.loadCommunicationHistory()[0], direction: 'receive', recordStatus: 'confirmed', inputText: '水',
+      output: [{ id: 'old', label: '旧图', image: '/old.png' }],
+      pictogramSequence: [{ pictogramId: 'old', label: '旧图' }]
+    }])
+    const corrected = [{ id: 'new', label: '水杯', image: '/private/new.png', attribution: { source: 'synthetic' } }]
+    repository.loadReceiverCorrections = () => [{
+      id: 'correction-1', expressionId: 'history-1', context: 'caregiver_history_review', createdAt: 200,
+      revisionAfter: { labels: ['水杯'], output: corrected, pictogramSequence: [{ pictogramId: 'new', label: '水杯' }] }
+    }] as any
+    const service = createCommunicationManagementService({ repository, boards: DEFAULT_BOARD_FIXTURES })
+    service.toggleHistoryFavorite('history-1')
+    corrected[0].image = '/later.png'
+    service.deleteHistory('history-1')
+    expect(service.loadSavedPhrases()[0].output).toEqual([expect.objectContaining({ id: 'new', image: '/private/new.png', attribution: { source: 'synthetic' } })])
+  })
+
+  test('keeps an independent favorite after the source history is removed', () => {
+    const repository = createRepository()
+    const output = [{ id: 'water-private', label: '水', image: '/private/water.png' }]
+    repository.overwriteCommunicationHistory([{
+      ...repository.loadCommunicationHistory()[0], output
+    }])
+    const service = createCommunicationManagementService({ repository, boards: DEFAULT_BOARD_FIXTURES, now: () => 501 })
+    service.toggleHistoryFavorite('history-1')
+    service.deleteHistory('history-1')
+    expect(service.loadHistory()).toEqual([])
+    expect(service.loadSavedPhrases()).toEqual([expect.objectContaining({ sentence: '我要喝水', output })])
+    expect(service.getQuickPhrases()[0].sentence).toBe('我要喝水')
+  })
+
+  test('does not mark history as saved when independent persistence fails', () => {
+    const repository = createRepository()
+    repository.overwriteCommunicationSavedPhrases = () => { throw new Error('storage full') }
+    const service = createCommunicationManagementService({ repository, boards: DEFAULT_BOARD_FIXTURES })
+    expect(() => service.toggleHistoryFavorite('history-1')).toThrow('storage full')
+    expect(repository.loadCommunicationHistory()[0].isFavorite).toBe(false)
+  })
+
   test('persists phrase CRUD, usage and compatible import/export', () => {
     const repository = createRepository()
     const service = createCommunicationManagementService({

@@ -445,9 +445,17 @@ export default function HistoryManager({
                   className='review-action'
                   disabled={!item.id}
                   onClick={() => {
-                    if (item.id) onItemsChange(service.toggleHistoryFavorite(item.id))
+                    if (!item.id) return
+                    try {
+                      onItemsChange(service.toggleHistoryFavorite(item.id))
+                      setNotice(item.isFavorite
+                        ? '已取消历史标记；独立收藏仍保留，可在常用语管理中删除。'
+                        : '已独立保存到常用语，删除或淘汰这条历史不会删除收藏。')
+                    } catch (error: any) {
+                      setNotice(error.message || '收藏保存失败，请重试。')
+                    }
                   }}
-                >{item.isFavorite ? '取消收藏' : '收藏'}</Button>
+                >{item.isFavorite ? '取消标记' : '收藏'}</Button>
                 <Button
                   className='review-action review-action--delete'
                   disabled={!item.id}

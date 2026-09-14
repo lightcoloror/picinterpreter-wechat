@@ -1,4 +1,5 @@
 import type { BoardDTO, TileDTO } from '@cboard-communication-core/dto'
+import { getEffectiveReceiverHistoryEntry, type ReceiverDraftEntry } from '@cboard-communication-core/receiverLifecycle'
 import {
   buildCommunicationHistoryAnonymizedOpenBoardLog,
   buildCommunicationHistoryExportText,
@@ -157,6 +158,21 @@ export function createCommunicationManagementService({
         id,
         { now }
       )
+      const entry = result.items.find(item => item.id === id)
+      if (result.changed && entry?.isFavorite) {
+        const effective = entry.direction === 'receive' && entry.recordStatus === 'confirmed' && entry.id
+          ? getEffectiveReceiverHistoryEntry(entry as ReceiverDraftEntry, repository.loadReceiverCorrections?.() || [])
+          : entry
+        const phrase = addCommunicationSavedPhrase(repository.loadCommunicationSavedPhrases(), {
+          sentence: getCommunicationHistoryReplayText(effective),
+          // output carries image/attribution; pictogramSequence is matching metadata.
+          output: JSON.parse(JSON.stringify(effective.output || [])),
+          sourceHistoryId: entry.id
+        }, { now })
+        if (!phrase.item) throw new Error('这条记录没有可收藏的内容')
+        // Save independent content first; a failed save must not mark history as saved.
+        if (phrase.changed) persistSavedPhrases(phrase.items)
+      }
       return result.changed ? persistHistory(result.items) : result.items
     },
 

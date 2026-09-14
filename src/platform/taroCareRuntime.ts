@@ -24,6 +24,7 @@ function requestError(status: number, data: unknown) {
 }
 export const runtime = {
   enabled: process.env.TARO_APP_CARE_COLLABORATION === 'true',
+  trialEnabled: process.env.TARO_APP_CARE_PUBLIC_TRIAL === 'true',
   identity,
   openAccount: () => Taro.redirectTo({ url: '/packages/management/pages/index/index' }),
   randomBytes: async (length: number) => new Uint8Array((await Taro.getRandomValues({ length })).randomValues),

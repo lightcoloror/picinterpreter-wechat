@@ -1,51 +1,68 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button, Text, View } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
+import Taro, { useDidHide, useDidShow } from '@tarojs/taro'
 
 import './index.css'
 import { runtime } from '../../platform/taroCareRuntime'
 import { currentCareContext, saveCareSelection, type CareSelection } from '../../platform/taroCareContext'
 import { startCareWorkspace, synchronizeCareWorkspace } from '../../platform/taroCareWorkspace'
+import { enterCareProfile } from '../../platform/careProfileEntry'
 
 export default function LaunchPage() {
   const [notice, setNotice] = useState('正在打开患者表达图板')
   const [profiles, setProfiles] = useState<CareSelection[]>([])
+  const generation = useRef(0)
+  const entryAccount = useRef<string | undefined>()
+  const currentRun = () => {
+    const run = generation.current
+    const accountId = entryAccount.current
+    return () => generation.current === run && runtime.identity()?.id === accountId
+  }
+  useDidHide(() => { generation.current += 1 })
 
   async function enter(profile: CareSelection, role?: string) {
-    if (role) {
-      await runtime.request(`/care/profiles/${profile.id}/commands`, 'POST', {
-        action: 'relationship', operationId: await runtime.newId(), value: { role }
-      })
-      profile = { ...profile, relationship: { role, defaultMode: role === 'patient' ? 'expression' : 'receiver' } }
+    if (!currentRun()()) return
+    generation.current += 1
+    const current = currentRun()
+    try { await enterCareProfile(profile, {
+      current, request: runtime.request, newId: runtime.newId,
+      select: saveCareSelection, start: startCareWorkspace, sync: synchronizeCareWorkspace,
+      needsRole: value => { setProfiles([value]); setNotice('选择此账号的使用身份') },
+      navigate: value => Taro.redirectTo({ url: value.relationship?.defaultMode === 'receiver'
+        ? '/packages/caregiver/pages/receiver/index' : '/packages/caregiver/pages/patient/index' })
+    }, role) } catch (error: any) {
+      if (current()) setNotice(error.message || '暂时无法进入患者档案')
     }
-    if (!profile.relationship) { setProfiles([profile]); setNotice('选择此账号的使用身份'); return }
-    await runtime.request('/care/context', 'PUT', { profileId: profile.id })
-    saveCareSelection(profile)
-    startCareWorkspace()
-    await synchronizeCareWorkspace().catch(() => undefined)
-    await Taro.redirectTo({ url: profile.relationship.defaultMode === 'receiver'
-      ? '/packages/caregiver/pages/receiver/index' : '/packages/caregiver/pages/patient/index' })
   }
 
   useDidShow(() => {
+    generation.current += 1
+    entryAccount.current = runtime.identity()?.id
+    const current = currentRun()
+    setProfiles([])
     if (runtime.enabled && !runtime.identity() && currentCareContext()?.accountId === 'offline') {
       startCareWorkspace()
-      void synchronizeCareWorkspace().catch(() => undefined).then(() => Taro.redirectTo({ url: currentCareContext()?.selection?.relationship?.defaultMode === 'receiver'
-        ? '/packages/caregiver/pages/receiver/index' : '/packages/caregiver/pages/patient/index' }))
+      void synchronizeCareWorkspace().catch(() => undefined).then(async () => {
+        if (current()) await Taro.redirectTo({ url: currentCareContext()?.selection?.relationship?.defaultMode === 'receiver'
+          ? '/packages/caregiver/pages/receiver/index' : '/packages/caregiver/pages/patient/index' })
+      })
       return
     }
     if (runtime.enabled && runtime.identity()) {
       void (async () => {
         try {
           const [list, context] = await Promise.all([runtime.request('/care/profiles', 'GET'), runtime.request('/care/context', 'GET')]) as [CareSelection[], { selectedProfileId: string | null }]
+          if (!current()) return
           const selected = list.find(p => p.id === context.selectedProfileId)
           if (selected?.relationship) await enter(selected)
           else { setProfiles(list); setNotice(list.length ? '选择要使用的患者档案' : '请从设置创建档案或接受家庭邀请') }
         } catch (error: any) {
+          if (!current()) return
           const cached = currentCareContext()?.selection
           if (!error.status && cached?.relationship) {
             startCareWorkspace()
             await synchronizeCareWorkspace().catch(() => undefined)
+            if (!current()) return
             await Taro.redirectTo({ url: cached.relationship.defaultMode === 'receiver'
               ? '/packages/caregiver/pages/receiver/index' : '/packages/caregiver/pages/patient/index' })
           } else setNotice('暂时无法联网，请稍后重试或从设置登录')

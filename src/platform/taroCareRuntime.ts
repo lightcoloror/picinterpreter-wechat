@@ -31,11 +31,12 @@ export const runtime = {
   funding(profileId: string) { const who = identity(); return who ? Taro.getStorageSync(`care-funding-v1:${who.id}:${profileId}`) : null },
   setFunding(profileId: string, fundingId: string) { const who = identity(); if (who) Taro.setStorageSync(`care-funding-v1:${who.id}:${profileId}`, fundingId) },
   async selectProfile(profile: CareSelection) {
-    const accountId = identity()?.id
+    const who = identity()
+    const accountId = who?.id
     if (!accountId) throw Object.assign(new Error('请先登录'), { status: 401 })
     try { await runtime.request('/care/context', 'PUT', { profileId: profile.id }) }
     catch (error: any) { if (error.status) throw error }
-    if (identity()?.id !== accountId) throw Object.assign(new Error('账号已切换，请重新选择档案'), { status: 401 })
+    if (identity()?.id !== accountId || identity()?.token !== who?.token) throw Object.assign(new Error('账号已切换，请重新选择档案'), { status: 401 })
     saveCareSelection(profile)
   },
   async saveArchive(bytes: Uint8Array) {

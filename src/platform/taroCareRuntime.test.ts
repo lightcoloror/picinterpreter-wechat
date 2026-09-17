@@ -52,6 +52,11 @@ test('the unchanged account can select cached data on network failure', async ()
   await runtime.selectProfile(profile)
   expect(h.save).toHaveBeenCalledWith(profile)
 })
+test('a replaced token cannot save the previous session profile relationship', async () => {
+  vi.spyOn(runtime, 'request').mockImplementation(async () => { h.token = 'replacement'; return {} })
+  await expect(runtime.selectProfile(profile)).rejects.toMatchObject({ status: 401 })
+  expect(h.save).not.toHaveBeenCalled()
+})
 test('logged out settings cannot send a selection request', async () => {
   h.account = ''
   const request = vi.spyOn(runtime, 'request')

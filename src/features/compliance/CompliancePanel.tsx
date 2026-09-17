@@ -11,7 +11,7 @@ export default function CompliancePanel() {
     Taro.openPrivacyContract({
       fail: () => {
         void Taro.showToast({
-          title: '公众平台尚未配置隐私保护指引',
+          title: '暂时无法打开隐私指引，请检查网络后重试；持续失败请联系支持人员',
           icon: 'none'
         })
       }
@@ -36,7 +36,10 @@ export default function CompliancePanel() {
       </Text>
       <Text className='compliance-panel__title'>了解数据去向</Text>
       <Text className='compliance-panel__body'>
-        图卡、常用语和沟通记录默认保存在本机；只有您主动登录、同步、使用 AI、OCR、方言识别或在线补图时，相关数据才会发送到已说明的服务。
+        普通沟通历史按本机账号和患者档案分别保留最近 50 条，不上传云端。收藏独立保存，可按您的同步与共享设置在云端保存或供获授权成员使用。
+      </Text>
+      <Text className='compliance-panel__body'>
+        开启患者资料云同步后，图卡、图板和沟通偏好会自动同步。使用在线 AI、语音识别、OCR 或在线补图时，本次提交的相关内容会发送到对应服务；不会自动附带过去的普通沟通历史。
       </Text>
       <Text className='compliance-panel__body'>
         程序代码采用 GPLv3；内置图符分别遵循 Mulberry、ARASAAC 和 CBoard 原始许可，在线候选采用前会显示来源并由照护者确认。

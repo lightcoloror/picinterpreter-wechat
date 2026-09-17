@@ -32,7 +32,7 @@ export default function PrivacyAuthorizationGate() {
     Taro.openPrivacyContract({
       fail: () => {
         void Taro.showToast({
-          title: '请先在公众平台配置隐私保护指引',
+          title: '暂时无法打开隐私指引，请检查网络后重试；持续失败请联系支持人员',
           icon: 'none'
         })
       }

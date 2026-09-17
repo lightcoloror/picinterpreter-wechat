@@ -170,7 +170,7 @@ export default function AccountSyncPanel({
       codeLength: 6
     })
     setPhoneVerificationNotice(
-      `${result.message} 为保护账号，暂不允许跳过手机号验证。`
+      `${result.message} 可以不填手机号，使用邮箱注册；如需绑定手机号，请稍后重试验证。`
     )
   }
 
@@ -696,9 +696,10 @@ export default function AccountSyncPanel({
               phoneVerificationBusy ||
               !configured ||
               (mode === 'register' &&
+                Boolean(normalizeMainlandChinaPhone(phone)) &&
                 (phoneVerificationLoading ||
                   !phoneVerificationConfiguration ||
-                  (Boolean(normalizeMainlandChinaPhone(phone)) && phoneVerificationConfiguration
+                  (phoneVerificationConfiguration
                     .requiredForPhoneRegistration &&
                     !hasMatchingPhoneVerification({
                       phone,

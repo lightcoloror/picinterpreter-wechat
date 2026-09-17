@@ -66,8 +66,13 @@ function project(engine: ReturnType<typeof createCareSync>) {
   }
   Taro.eventCenter.trigger('care-content-changed')
 }
-export async function synchronizeCareWorkspace() {
-  if (pending) return pending
+export async function synchronizeCareWorkspace(options: { localOnly?: boolean } = {}) {
+  if (pending) {
+    if (!options.localOnly) return pending
+    // A network failure must not prevent the final local queue flush for export.
+    await pending.catch(() => undefined)
+    return synchronizeCareWorkspace(options)
+  }
   const context = currentCareContext()
   if (!context?.profileId) return
   const key = careScopedKey('workspace')
@@ -128,7 +133,7 @@ export async function synchronizeCareWorkspace() {
         if (Taro.getStorageSync(rateKey) === rate) Taro.removeStorageSync(rateKey)
       }
       // A password archive provides local content, never an online identity.
-      if (context.accountId !== 'offline') await engine.sync()
+      if (context.accountId !== 'offline' && !options.localOnly) await engine.sync()
     } finally { if (currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) project(engine) }
   })().finally(() => { pending = null })
   return pending

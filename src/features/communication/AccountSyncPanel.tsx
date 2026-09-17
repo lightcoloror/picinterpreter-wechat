@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Input, Text, View } from '@tarojs/components'
+import Taro from '@tarojs/taro'
 
 import {
   isValidMainlandChinaPhone,
@@ -355,6 +356,10 @@ export default function AccountSyncPanel({
         </Text>
       </View>
 
+      {process.env.TARO_APP_CARE_ACCOUNT_CLOSURE === 'true' && <Button disabled={busy}
+        onClick={() => void Taro.navigateTo({ url: '/packages/backup/pages/library/index' })}>
+        账号注销、进度与本机恢复
+      </Button>}
       {session ? (
         <View className='account-sync__session'>
           <Text className='account-sync__identity'>
@@ -421,7 +426,7 @@ export default function AccountSyncPanel({
               退出账号
             </Button>
           </View>
-          <View className='account-sync__danger'>
+          {process.env.TARO_APP_CARE_ACCOUNT_CLOSURE !== 'true' && <View className='account-sync__danger'>
             <Button
               id='account-delete-open-button'
               className='button account-sync__danger-open'
@@ -478,7 +483,7 @@ export default function AccountSyncPanel({
                 </View>
               </View>
             )}
-          </View>
+          </View>}
         </View>
       ) : (
         <View className='account-sync__form'>

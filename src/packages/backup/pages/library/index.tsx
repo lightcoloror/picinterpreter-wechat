@@ -30,6 +30,7 @@ import type {
 } from '../../../../platform/privatePictureLibraryCloudPort'
 import { createPictureLibraryBackupService } from '../../pictureLibraryBackupService'
 import './index.css'
+import AccountClosurePanel from '../../AccountClosurePanel'
 
 const backupService = createPictureLibraryBackupService({
   repository: createTaroCommunicationRepository(),
@@ -641,6 +642,14 @@ export default function PictureLibraryBackupPage() {
 
   return (
     <View className='library-backup-page'>
+      {process.env.TARO_APP_CARE_ACCOUNT_CLOSURE === 'true' && <AccountClosurePanel
+        key={accountSession?.user.id || 'guest'}
+        buildArchive={async () => {
+          const built = await backupService.buildArchive(PICTURE_LIBRARY_ARCHIVE_SCOPES.full, undefined, { includeDeviceData: true })
+          if (!built.ok || !built.archive) throw new Error(built.message)
+          return built.archive.data
+        }}
+      />}
       <View className='library-backup-hero'>
         <Text className='library-backup-hero__eyebrow'>
           图语家 · 本机数据工具

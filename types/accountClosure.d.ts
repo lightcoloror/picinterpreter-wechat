@@ -44,3 +44,7 @@ declare module '@cboard-communication-core/accountClosureRecovery' {
   }
 }
 
+declare module '@cboard-communication-core/careDeviceArchive' {
+  export function exportCareDeviceArchive(identity: { familyId: string; profileId: string }, snapshot: any): Promise<Uint8Array>
+}
+

@@ -74,6 +74,7 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
     plugins: ["@tarojs/plugin-generator"],
     defineConstants: {
       'process.env.TARO_APP_CARE_COLLABORATION': JSON.stringify(boolEnv('TARO_APP_CARE_COLLABORATION')),
+      'process.env.TARO_APP_CARE_ACCOUNT_CLOSURE': JSON.stringify(boolEnv('TARO_APP_CARE_ACCOUNT_CLOSURE')),
       'process.env.TARO_APP_CARE_PUBLIC_TRIAL': JSON.stringify(boolEnv('TARO_APP_CARE_PUBLIC_TRIAL')),
       'process.env.TARO_APP_API_BASE_URL': JSON.stringify(envValue('TARO_APP_API_BASE_URL')),
       'process.env.TARO_APP_SOURCE_CODE_URL': JSON.stringify(

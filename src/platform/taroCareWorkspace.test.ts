@@ -85,6 +85,19 @@ test('offline restored profiles persist local changes without calling cloud sync
   }
 })
 
+test('closure local-only flush persists logged-in drafts without a cloud call', async () => {
+  h.values.clear()
+  h.engine.sync.mockClear()
+  h.queue.mockClear()
+  h.context.accountId = 'synthetic-account'
+  h.values.set(h.scoped('care-pending-boards'), JSON.stringify([{ id: 'closure-board' }]))
+  const { synchronizeCareWorkspace } = await import('./taroCareWorkspace')
+  await synchronizeCareWorkspace({ localOnly: true })
+  expect(h.queue).toHaveBeenCalled()
+  expect(h.values.has(h.scoped('care-pending-boards'))).toBe(false)
+  expect(h.engine.sync).not.toHaveBeenCalled()
+})
+
 test('persisted favorite baseline skips read-only usage changes and preserves unseen remote favorites', async () => {
   h.values.clear()
   h.engine.edit.mockClear()

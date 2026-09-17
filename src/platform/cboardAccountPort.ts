@@ -19,6 +19,8 @@ import {
 export interface CboardApiResult<T> {
   ok: boolean
   message: string
+  code?: string
+  familyIds?: string[]
   value?: T
 }
 
@@ -179,7 +181,8 @@ export interface CboardAccountPort {
   }): Promise<CboardApiResult<CboardPhonePasswordResetResult>>
   deleteAccount(
     token: string,
-    userId: string
+    userId: string,
+    closeFamilyIds?: string[]
   ): Promise<CboardApiResult<CboardAccountDeleteValue>>
   getSettings(
     token: string
@@ -303,6 +306,32 @@ function getRequestError(path: string, statusCode: number, data: unknown) {
     return getServerMessage(data, '该邮箱已经注册，请登录或检查验证邮件。')
   }
   return getServerMessage(data, 'cboard-api 暂时不可用，请稍后重试。')
+}
+
+function getRequestFailure(path: string, statusCode: number, data: unknown) {
+  const response = asObject(data)
+  const error = asObject(response.error)
+  const code =
+    typeof response.code === 'string'
+      ? response.code
+      : typeof error.code === 'string'
+        ? error.code
+        : ''
+  const familyIds =
+    statusCode === 409 &&
+    code === 'FAMILY_CLOSE_CONFIRMATION_REQUIRED' &&
+    Array.isArray(error.familyIds) &&
+    error.familyIds.every(
+      value => typeof value === 'string' && value.trim().length > 0
+    )
+      ? error.familyIds.map(value => value.trim())
+      : []
+  return {
+    ok: false,
+    message: getRequestError(path, statusCode, data),
+    ...(code ? { code } : {}),
+    ...(familyIds.length ? { familyIds } : {})
+  }
 }
 
 function validateEmail(value: string) {
@@ -458,10 +487,7 @@ export function createCboardAccountPort(
         header
       })
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        return {
-          ok: false,
-          message: getRequestError(path, response.statusCode, response.data)
-        }
+        return getRequestFailure(path, response.statusCode, response.data)
       }
       return {
         ok: true,
@@ -752,7 +778,7 @@ export function createCboardAccountPort(
       }
     },
 
-    async deleteAccount(token, userId) {
+    async deleteAccount(token, userId, closeFamilyIds = []) {
       const accountId = normalizeText(userId, 128)
       if (!String(token || '').trim() || !accountId) {
         return {
@@ -764,7 +790,9 @@ export function createCboardAccountPort(
       const result = await request(
         `/account/${encodeURIComponent(accountId)}`,
         'DELETE',
-        undefined,
+        Array.isArray(closeFamilyIds) && closeFamilyIds.length
+          ? { closeFamilyIds }
+          : undefined,
         token
       )
       return result.ok
@@ -773,7 +801,12 @@ export function createCboardAccountPort(
             message: 'CBoard 云端账号已永久删除。',
             value: { accountId }
           }
-        : { ok: false, message: result.message }
+        : {
+            ok: false,
+            message: result.message,
+            ...(result.code ? { code: result.code } : {}),
+            ...(result.familyIds ? { familyIds: result.familyIds } : {})
+          }
     },
 
     async getSettings(token) {

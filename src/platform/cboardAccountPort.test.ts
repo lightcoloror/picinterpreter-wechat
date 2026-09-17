@@ -457,6 +457,76 @@ describe('cboardAccountPort', () => {
     expect(harness.request).not.toHaveBeenCalled()
   })
 
+  test('keeps the family-close confirmation contract and submits exact ids', async () => {
+    const harness = createHarness()
+    harness.request.mockResolvedValueOnce({
+      statusCode: 409,
+      data: {
+        message: 'Confirm closing the family before deleting the account.',
+        error: {
+          code: 'FAMILY_CLOSE_CONFIRMATION_REQUIRED',
+          familyIds: ['family-1', 'family-2']
+        }
+      }
+    })
+
+    const first = await harness.port.deleteAccount('secret-token', 'user-1')
+    expect(first).toEqual(expect.objectContaining({
+      ok: false,
+      code: 'FAMILY_CLOSE_CONFIRMATION_REQUIRED',
+      familyIds: ['family-1', 'family-2']
+    }))
+
+    await harness.port.deleteAccount(
+      'secret-token',
+      'user-1',
+      first.familyIds
+    )
+    expect(harness.request).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      method: 'DELETE',
+      data: { closeFamilyIds: ['family-1', 'family-2'] }
+    }))
+  })
+
+  test('keeps legacy family transfer errors as a non-destructive failure', async () => {
+    const harness = createHarness()
+    harness.request.mockResolvedValueOnce({
+      statusCode: 409,
+      data: {
+        message: 'Transfer family administration first.',
+        error: { code: 'FAMILY_TRANSFER_REQUIRED' }
+      }
+    })
+
+    const result = await harness.port.deleteAccount('secret-token', 'user-1')
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      code: 'FAMILY_TRANSFER_REQUIRED'
+    }))
+  })
+
+  test('does not turn malformed family ids into a confirmation request', async () => {
+    const harness = createHarness()
+    harness.request.mockResolvedValueOnce({
+      statusCode: 409,
+      data: {
+        message: 'Invalid family ids.',
+        error: {
+          code: 'FAMILY_CLOSE_CONFIRMATION_REQUIRED',
+          familyIds: ['family-1', { id: 'secret' }]
+        }
+      }
+    })
+
+    const result = await harness.port.deleteAccount('secret-token', 'user-1')
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      message: 'Invalid family ids.'
+    }))
+    expect(result.code).toBe('FAMILY_CLOSE_CONFIRMATION_REQUIRED')
+    expect(result.familyIds).toBeUndefined()
+  })
+
   test('rejects invalid credentials before making a request', async () => {
     const harness = createHarness()
     const result = await harness.port.login({

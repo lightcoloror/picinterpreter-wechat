@@ -24,15 +24,18 @@ function createHarness() {
   }))
   const clearSession = vi.fn()
   const confirm = vi.fn(async () => true)
+  const confirmFamilyClose = vi.fn(async () => true)
 
   return {
     deleteAccount,
     clearSession,
     confirm,
+    confirmFamilyClose,
     run: (accountSession: CboardAccountSession | null = session) =>
       executeCboardAccountDeletion({
         session: accountSession,
         confirm,
+        confirmFamilyClose,
         accountPort: { deleteAccount },
         clearSession
       })
@@ -72,7 +75,7 @@ describe('account deletion', () => {
     expect(harness.clearSession).not.toHaveBeenCalled()
   })
 
-  test('keeps the session when the remote account deletion fails', async () => {
+  test('keeps the session when the remote account deletion status is unknown', async () => {
     const harness = createHarness()
     harness.deleteAccount.mockResolvedValueOnce({
       ok: false,
@@ -84,9 +87,72 @@ describe('account deletion', () => {
     expect(result).toEqual({
       deleted: false,
       status: 'failed',
-      message: '服务器暂时不可用。'
+      message: '云端账号删除未完成，状态可能正在处理；本机资料仍然保留，请重试。 服务器暂时不可用。'
     })
     expect(harness.clearSession).not.toHaveBeenCalled()
+  })
+
+  test('requires a separate explicit family-close confirmation and submits returned ids only', async () => {
+    const harness = createHarness()
+    harness.deleteAccount
+      .mockResolvedValueOnce({
+        ok: false,
+        code: 'FAMILY_CLOSE_CONFIRMATION_REQUIRED',
+        familyIds: ['family-1'],
+        message: '需要确认关闭家庭。'
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        message: 'CBoard 云端账号已永久删除。',
+        value: { accountId: 'user-1' }
+      })
+
+    const result = await harness.run()
+
+    expect(result.deleted).toBe(true)
+    expect(harness.confirmFamilyClose).toHaveBeenCalledWith(['family-1'])
+    expect(harness.deleteAccount).toHaveBeenNthCalledWith(
+      2,
+      'secret-token',
+      'user-1',
+      ['family-1']
+    )
+    expect(harness.clearSession).toHaveBeenCalledTimes(1)
+  })
+
+  test('does not retry or delete when family-close confirmation is cancelled', async () => {
+    const harness = createHarness()
+    harness.confirmFamilyClose.mockResolvedValueOnce(false)
+    harness.deleteAccount.mockResolvedValueOnce({
+      ok: false,
+      code: 'FAMILY_CLOSE_CONFIRMATION_REQUIRED',
+      familyIds: ['family-1'],
+      message: '需要确认关闭家庭。'
+    })
+
+    const result = await harness.run()
+
+    expect(result.status).toBe('cancelled')
+    expect(harness.deleteAccount).toHaveBeenCalledTimes(1)
+    expect(harness.clearSession).not.toHaveBeenCalled()
+  })
+
+  test('shows transfer guidance without retrying deletion', async () => {
+    const harness = createHarness()
+    harness.deleteAccount.mockResolvedValueOnce({
+      ok: false,
+      code: 'FAMILY_TRANSFER_REQUIRED',
+      message: '需要交接家庭管理员。'
+    })
+
+    const result = await harness.run()
+
+    expect(result).toEqual({
+      deleted: false,
+      status: 'failed',
+      message: '该账号仍管理其他家庭成员，请先交接家庭管理员权限；未继续删除，本机资料仍然保留。'
+    })
+    expect(harness.deleteAccount).toHaveBeenCalledTimes(1)
   })
 
   test('clears only the account session after remote deletion succeeds', async () => {

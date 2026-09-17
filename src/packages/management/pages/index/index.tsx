@@ -526,6 +526,18 @@ export default function CommunicationManagementPage() {
             cancelText: '取消'
           })
           return Boolean(confirmation.confirm)
+        },
+        confirmFamilyClose: async familyIds => {
+          const confirmation = await Taro.showModal({
+            title: '同时关闭家庭并删除云端账号',
+            content:
+              `将关闭这 ${familyIds.length} 个家庭，并删除对应云端资料及账号。` +
+              '本机图卡、图片和沟通历史仍保留。',
+            confirmText: '确认关闭',
+            confirmColor: '#b91c1c',
+            cancelText: '取消'
+          })
+          return Boolean(confirmation.confirm)
         }
       })
       if (result.deleted) setAccountSession(null)

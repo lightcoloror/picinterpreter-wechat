@@ -1,4 +1,7 @@
 import { defineConfig, type UserConfigExport } from '@tarojs/cli'
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin'
 import devConfig from './dev'
@@ -6,10 +9,48 @@ import prodConfig from './prod'
 
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
 const shouldAnalyzeWeappBundle = process.env.WEAPP_BUNDLE_ANALYZE === '1'
+let buildRevision = 'unknown'
+try {
+  buildRevision = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: path.resolve(__dirname, '..'), encoding: 'utf8'
+  }).trim()
+} catch (_) {}
+class ReleaseFeatureManifestPlugin {
+  constructor(flags) { this.flags = flags }
+  apply(compiler) {
+    compiler.hooks.afterEmit.tap('ReleaseFeatureManifestPlugin', () => {
+      const root = compiler.outputPath
+      const files = []
+      const visit = relative => {
+        const directory = path.join(root, relative)
+        for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+          const child = path.join(relative, entry.name)
+          if (entry.isDirectory()) visit(child)
+          else if (child.replace(/\\/g, '/') !== 'release-feature-manifest.json') files.push(child)
+        }
+      }
+      visit('')
+      const hash = createHash('sha256')
+      for (const file of files) hash.update(file.replace(/\\/g, '/')).update('\0').update(readFileSync(path.join(root, file))).update('\n')
+      writeFileSync(path.join(root, 'release-feature-manifest.json'), `${JSON.stringify({ ...this.flags, artifactFingerprint: hash.digest('hex') }, null, 2)}\n`)
+    })
+  }
+}
 const weappStatsFilename = path.resolve(__dirname, '../.bundle-analysis/weapp-stats.json')
 
 // https://taro-docs.jd.com/docs/next/config#defineconfig-辅助函数
 export default defineConfig<'webpack5'>(async (merge, { command: _command, mode: _mode }) => {
+  const envValue = name => String(process.env[name] || '').trim()
+  const boolEnv = name => (envValue(name).toLowerCase() === 'true' ? 'true' : '')
+  const outputRoot = process.env.TARO_APP_OUTPUT_ROOT || 'dist'
+  const releaseFlags = {
+    schema: 1, marker: 'cboard-release-feature-manifest-v1', sourceRevision: buildRevision,
+    releaseChannel: envValue('TARO_APP_RELEASE_CHANNEL') || 'development',
+    apiBaseUrl: envValue('TARO_APP_API_BASE_URL'),
+    careCollaboration: boolEnv('TARO_APP_CARE_COLLABORATION') === 'true',
+    cloudFeatures: boolEnv('TARO_APP_ENABLE_CLOUD_FEATURES') === 'true',
+    publicTrial: boolEnv('TARO_APP_CARE_PUBLIC_TRIAL') === 'true'
+  }
   const baseConfig: UserConfigExport<'webpack5'> = {
     projectName: 'cboard-wechat-poc',
     date: '2026-7-15',
@@ -21,7 +62,7 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
       828: 1.81 / 2
     },
     sourceRoot: 'src',
-    outputRoot: 'dist',
+    outputRoot,
     alias: {
       react: path.resolve(__dirname, '../node_modules/react'),
       '@cboard-communication-core': path.resolve(
@@ -29,23 +70,19 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
         '../../cboard/src/common/communicationSupport'
       )
     },
-    plugins: [
-      "@tarojs/plugin-generator"
-    ],
+    plugins: ["@tarojs/plugin-generator"],
     defineConstants: {
-      'process.env.TARO_APP_CARE_COLLABORATION': JSON.stringify(process.env.TARO_APP_CARE_COLLABORATION || ''),
-      'process.env.TARO_APP_CARE_PUBLIC_TRIAL': JSON.stringify(process.env.TARO_APP_CARE_PUBLIC_TRIAL || ''),
-      'process.env.TARO_APP_API_BASE_URL': JSON.stringify(
-        process.env.TARO_APP_API_BASE_URL || ''
-      ),
+      'process.env.TARO_APP_CARE_COLLABORATION': JSON.stringify(boolEnv('TARO_APP_CARE_COLLABORATION')),
+      'process.env.TARO_APP_CARE_PUBLIC_TRIAL': JSON.stringify(boolEnv('TARO_APP_CARE_PUBLIC_TRIAL')),
+      'process.env.TARO_APP_API_BASE_URL': JSON.stringify(envValue('TARO_APP_API_BASE_URL')),
       'process.env.TARO_APP_SOURCE_CODE_URL': JSON.stringify(
         process.env.TARO_APP_SOURCE_CODE_URL || ''
       ),
       'process.env.TARO_APP_RELEASE_CHANNEL': JSON.stringify(
-        process.env.TARO_APP_RELEASE_CHANNEL || 'development'
+        envValue('TARO_APP_RELEASE_CHANNEL') || 'development'
       ),
       'process.env.TARO_APP_ENABLE_CLOUD_FEATURES': JSON.stringify(
-        process.env.TARO_APP_ENABLE_CLOUD_FEATURES || ''
+        boolEnv('TARO_APP_ENABLE_CLOUD_FEATURES')
       ),
       'process.env.TARO_APP_ENABLE_AI_FEATURES': JSON.stringify(
         process.env.TARO_APP_ENABLE_AI_FEATURES || ''
@@ -64,11 +101,11 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
       patterns: [
         {
           from: 'src/assets/cboard-default',
-          to: 'dist/assets/cboard-default'
+          to: path.join(outputRoot, 'assets/cboard-default')
         },
         {
           from: 'src/assets/emergency',
-          to: 'dist/packages/emergency/assets/emergency'
+          to: path.join(outputRoot, 'packages/emergency/assets/emergency')
         }
       ],
       options: {
@@ -99,6 +136,7 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
         }
       },
       webpackChain(chain) {
+        chain.plugin('release-feature-manifest').use(ReleaseFeatureManifestPlugin, [releaseFlags])
         chain.resolve.plugin('tsconfig-paths').use(TsconfigPathsPlugin)
         chain.module.rule('care-shared-panel')
           .test(/[Cc]are[^/\\]*\.js$/)

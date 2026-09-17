@@ -1,8 +1,20 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { buildArtifactFingerprint, readBuiltFeatureManifest } from './build-feature-manifest.mjs'
+import { execFileSync } from 'node:child_process'
 
 const DEFAULT_CONFIG = '.release-readiness.local.json'
+
+export function hasTrackedChanges(cwd = process.cwd()) {
+  try {
+    return Boolean(execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+      cwd, encoding: 'utf8'
+    }).trim())
+  } catch (_) {
+    return true
+  }
+}
 
 function isHttpsPublicUrl(value) {
   try {
@@ -19,7 +31,7 @@ function isHttpsPublicUrl(value) {
   }
 }
 
-export function evaluateReleaseReadiness(config = {}) {
+export function evaluateReleaseReadiness(config = {}, buildManifest = null) {
   const issues = []
   const requireTrue = (field, message) => {
     if (config[field] !== true) issues.push(message)
@@ -106,6 +118,23 @@ export function evaluateReleaseReadiness(config = {}) {
     '尚未完成微信开发者工具性能扫描和插件体积复核。'
   )
 
+  if (typeof config.publicTrial !== 'boolean') {
+    issues.push('readiness 配置必须明确 publicTrial 为 true 或 false。')
+  }
+  const publicTrialRequired = config.publicTrial === true || buildManifest?.publicTrial === true
+  if (publicTrialRequired) {
+    if (!buildManifest || buildManifest.publicTrial !== true)
+      issues.push('public-trial readiness 要求产物启用 public-trial 开关。')
+    if (buildManifest && buildManifest.careCollaboration !== true)
+      issues.push('public-trial 构建必须启用家庭协作开关。')
+    if (buildManifest && buildManifest.cloudFeatures !== true)
+      issues.push('public-trial 构建必须启用云功能开关。')
+    if (buildManifest && buildManifest.releaseChannel !== 'production')
+      issues.push('public-trial 构建必须使用 production release channel。')
+    if (buildManifest && buildManifest.apiBaseUrl !== config.apiBaseUrl)
+      issues.push('public-trial 构建 API endpoint 与 readiness 配置不一致。')
+  }
+
   return {
     ready: issues.length === 0,
     issues
@@ -119,7 +148,12 @@ function parseConfigPath(argv) {
     : DEFAULT_CONFIG
 }
 
-function run() {
+function parseDistPath(argv) {
+  const distIndex = argv.indexOf('--dist')
+  return distIndex >= 0 && argv[distIndex + 1] ? argv[distIndex + 1] : 'dist'
+}
+
+async function run() {
   const configPath = path.resolve(process.cwd(), parseConfigPath(process.argv))
   if (!existsSync(configPath)) {
     console.error(`Missing release readiness file: ${configPath}`)
@@ -129,9 +163,39 @@ function run() {
     process.exit(1)
   }
 
+  const distRoot = path.resolve(process.cwd(), parseDistPath(process.argv))
+  const buildManifest = await readBuiltFeatureManifest(distRoot)
   const result = evaluateReleaseReadiness(
-    JSON.parse(readFileSync(configPath, 'utf8'))
+    JSON.parse(readFileSync(configPath, 'utf8')),
+    buildManifest
   )
+  if (hasTrackedChanges(process.cwd())) {
+    result.issues.push('正式代码包对应源码存在未提交的 tracked changes。')
+    result.ready = false
+  }
+  if (!buildManifest) {
+    result.issues.push('正式代码包缺少可核验的功能开关 manifest。')
+    result.ready = false
+  } else {
+    if (buildManifest.schema !== 1 || buildManifest.marker !== 'cboard-release-feature-manifest-v1') {
+      result.issues.push('正式代码包 manifest schema 或 marker 无效。')
+      result.ready = false
+    }
+    let currentRevision = ''
+    try {
+      currentRevision = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: process.cwd(), encoding: 'utf8'
+      }).trim()
+    } catch (_) {}
+    if (!currentRevision || buildManifest.sourceRevision !== currentRevision) {
+      result.issues.push('正式代码包 manifest 与当前源码 revision 不一致。')
+      result.ready = false
+    }
+    if (buildManifest.artifactFingerprint !== buildArtifactFingerprint(distRoot)) {
+      result.issues.push('正式代码包 manifest 与实际 dist 产物 hash 不一致。')
+      result.ready = false
+    }
+  }
   if (!result.ready) {
     console.error('WeChat release is blocked:')
     result.issues.forEach(issue => console.error(`- ${issue}`))

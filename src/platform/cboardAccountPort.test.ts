@@ -774,4 +774,131 @@ describe('cboardAccountPort', () => {
       })
     )
   })
+
+  test('uses the closure API contract and keeps status separate from bearer APIs', async () => {
+    const harness = createHarness()
+    const receiptId = 'a'.repeat(24)
+    const secret = 'b'.repeat(64)
+    harness.request.mockImplementation(async ({ url, method, data, header }) => {
+      if (url.endsWith('/care/account/closure-preview')) {
+        return {
+          statusCode: 200,
+          data: {
+            familyIds: ['family-1'],
+            families: [{ familyId: 'family-1', profileCount: 2, requiresTransfer: false }],
+            blockers: [],
+            canConfirm: true,
+            confirmationRequired: true,
+            revalidationRequired: true,
+            deletesCloudData: true,
+            preservesLocalData: true
+          }
+        }
+      }
+      if (url.endsWith('/care/account/closure-receipt')) {
+        return { statusCode: 201, data: { receiptId, secret, expiresAt: 1234 } }
+      }
+      if (url.endsWith('/care/account/closure-confirm')) {
+        return {
+          statusCode: 202,
+          data: { operationId: 'op-1', cleanupStatus: 'prepared', accountDeleted: false }
+        }
+      }
+      if (url.endsWith('/care/account/closure-status')) {
+        return {
+          statusCode: 200,
+          data: { status: 'confirmed', accountDeleted: false, expiresAt: 1234, operationId: 'op-1', cleanupStatus: 'media_cleanup' }
+        }
+      }
+      expect(method).toBeDefined()
+      expect(data).toBeDefined()
+      expect(header).toBeDefined()
+      return { statusCode: 200, data: {} }
+    })
+
+    const preview = await harness.port.previewAccountClosure('session-token')
+    const prepared = await harness.port.prepareAccountClosure('session-token')
+    const confirmed = await harness.port.confirmAccountClosure('session-token', {
+      familyIds: ['family-1'],
+      secret,
+      confirmCloudDeletion: true
+    })
+    const status = await harness.port.getAccountClosureStatus({ receiptId, secret })
+
+    expect(preview.value?.canConfirm).toBe(true)
+    expect(prepared.value).toEqual({ receiptId, secret, expiresAt: 1234 })
+    expect(confirmed.value).toEqual({
+      operationId: 'op-1',
+      cleanupStatus: 'prepared',
+      accountDeleted: false
+    })
+    expect(status.value).toEqual({
+      status: 'confirmed',
+      accountDeleted: false,
+      expiresAt: 1234,
+      operationId: 'op-1',
+      cleanupStatus: 'media_cleanup'
+    })
+    expect(harness.request).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      url: 'https://api.example.test/care/account/closure-preview',
+      method: 'GET',
+      header: { 'Content-Type': 'application/json', Authorization: 'Bearer session-token' }
+    }))
+    expect(harness.request).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      url: 'https://api.example.test/care/account/closure-confirm',
+      method: 'POST',
+      data: { familyIds: ['family-1'], secret, confirmCloudDeletion: true },
+      header: { 'Content-Type': 'application/json', Authorization: 'Bearer session-token' }
+    }))
+    expect(harness.request).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      url: 'https://api.example.test/care/account/closure-status',
+      method: 'POST',
+      data: { receiptId, secret },
+      header: { 'Content-Type': 'application/json' }
+    }))
+  })
+
+  test('preserves closure business error codes and rejects malformed credentials locally', async () => {
+    const harness = createHarness()
+    harness.request.mockResolvedValueOnce({
+      statusCode: 409,
+      data: { code: 'FAMILY_TRANSFER_REQUIRED', error: { code: 'FAMILY_TRANSFER_REQUIRED' } }
+    })
+    const failed = await harness.port.confirmAccountClosure('session-token', {
+      familyIds: ['family-1'],
+      secret: 'c'.repeat(64),
+      confirmCloudDeletion: true
+    })
+    expect(failed).toEqual(expect.objectContaining({
+      ok: false,
+      code: 'FAMILY_TRANSFER_REQUIRED'
+    }))
+    const callsBeforeInvalid = harness.request.mock.calls.length
+    const invalid = await harness.port.getAccountClosureStatus({
+      receiptId: 'bad',
+      secret: 'bad'
+    })
+    expect(invalid.ok).toBe(false)
+    expect(harness.request).toHaveBeenCalledTimes(callsBeforeInvalid)
+  })
+
+  test('rejects a deletion claim while cleanup is incomplete', async () => {
+    const harness = createHarness()
+    harness.request.mockResolvedValue({ statusCode: 200, data: {
+      status: 'confirmed', accountDeleted: true, expiresAt: 1234,
+      operationId: 'op-1', cleanupStatus: 'media_cleanup'
+    } })
+    expect(await harness.port.getAccountClosureStatus({ receiptId: 'a'.repeat(24), secret: 'b'.repeat(64) }))
+      .toMatchObject({ ok: false, code: 'INVALID_RESPONSE' })
+  })
+
+  test('does not convert malformed approval strings into valid preview consent', async () => {
+    const harness = createHarness()
+    harness.request.mockResolvedValue({ statusCode: 200, data: {
+      familyIds: [], families: [], blockers: [], canConfirm: 'false',
+      confirmationRequired: true, revalidationRequired: true,
+      deletesCloudData: true, preservesLocalData: true
+    } })
+    expect((await harness.port.previewAccountClosure('token')).ok).toBe(false)
+  })
 })

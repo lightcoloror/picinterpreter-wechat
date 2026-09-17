@@ -20,6 +20,7 @@ export interface CboardApiResult<T> {
   ok: boolean
   message: string
   code?: string
+  status?: number
   familyIds?: string[]
   value?: T
 }
@@ -99,6 +100,50 @@ export interface CboardPhonePasswordResetResult {
 
 export interface CboardAccountDeleteValue {
   accountId: string
+}
+
+export interface CboardClosurePreviewFamily {
+  familyId: string
+  profileCount: number
+  requiresTransfer: boolean
+}
+
+export interface CboardClosurePreviewBlocker {
+  code: string
+  familyIds?: string[]
+  fundingIds?: string[]
+}
+
+export interface CboardClosurePreview {
+  familyIds: string[]
+  families: CboardClosurePreviewFamily[]
+  blockers: CboardClosurePreviewBlocker[]
+  canConfirm: boolean
+  confirmationRequired: boolean
+  revalidationRequired: boolean
+  deletesCloudData: boolean
+  preservesLocalData: boolean
+}
+
+export interface CboardClosureReceiptPrepareValue {
+  receiptId: string
+  secret: string
+  expiresAt: number
+}
+
+export interface CboardClosureConfirmValue {
+  operationId: string
+  cleanupStatus: string
+  accountDeleted: false
+}
+
+export interface CboardClosureStatusValue {
+  status: 'prepared' | 'confirmed'
+  accountDeleted: boolean
+  expiresAt: number
+  operationId?: string
+  cleanupStatus?: string
+  updatedAt?: number
 }
 
 export interface ConfirmedReceiverSyncValue {
@@ -184,6 +229,24 @@ export interface CboardAccountPort {
     userId: string,
     closeFamilyIds?: string[]
   ): Promise<CboardApiResult<CboardAccountDeleteValue>>
+  previewAccountClosure(
+    token: string
+  ): Promise<CboardApiResult<CboardClosurePreview>>
+  prepareAccountClosure(
+    token: string
+  ): Promise<CboardApiResult<CboardClosureReceiptPrepareValue>>
+  confirmAccountClosure(
+    token: string,
+    input: {
+      familyIds: string[]
+      secret: string
+      confirmCloudDeletion: true
+    }
+  ): Promise<CboardApiResult<CboardClosureConfirmValue>>
+  getAccountClosureStatus(input: {
+    receiptId: string
+    secret: string
+  }): Promise<CboardApiResult<CboardClosureStatusValue>>
   getSettings(
     token: string
   ): Promise<CboardApiResult<Record<string, unknown>>>
@@ -329,6 +392,7 @@ function getRequestFailure(path: string, statusCode: number, data: unknown) {
   return {
     ok: false,
     message: getRequestError(path, statusCode, data),
+    ...(path.startsWith('/care/account/') ? { status: statusCode } : {}),
     ...(code ? { code } : {}),
     ...(familyIds.length ? { familyIds } : {})
   }
@@ -354,6 +418,78 @@ function boundedInteger(value: unknown, fallback: number, maximum: number) {
 function normalizeOpaqueToken(value: unknown) {
   const token = String(value || '').trim().toLowerCase()
   return /^[a-f0-9]{64}$/.test(token) ? token : ''
+}
+
+function normalizeClosureReceiptId(value: unknown) {
+  const receiptId = String(value || '').trim().toLowerCase()
+  return /^[a-f0-9]{24}$/.test(receiptId) ? receiptId : ''
+}
+
+function normalizeClosureFamilyIds(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+    : []
+}
+
+function normalizeClosurePreview(
+  value: unknown
+): CboardClosurePreview | undefined {
+  const source = asObject(value)
+  if (!Array.isArray(source.familyIds) || !Array.isArray(source.families) ||
+      !Array.isArray(source.blockers) || typeof source.canConfirm !== 'boolean' ||
+      source.confirmationRequired !== true || source.revalidationRequired !== true ||
+      source.deletesCloudData !== true || source.preservesLocalData !== true ||
+      !source.familyIds.every(id => typeof id === 'string' && id.trim().length > 0) ||
+      new Set(source.familyIds).size !== source.familyIds.length) return undefined
+  const familyIds = normalizeClosureFamilyIds(source.familyIds)
+  const families = (Array.isArray(source.families) ? source.families : [])
+    .map(item => {
+      const family = asObject(item)
+      const familyId = String(family.familyId || '').trim()
+      const profileCount = Number(family.profileCount)
+      return familyId && Number.isInteger(profileCount) && profileCount >= 0
+        ? {
+            familyId,
+            profileCount,
+            requiresTransfer: Boolean(family.requiresTransfer)
+          }
+        : null
+    })
+    .filter(
+      (item): item is CboardClosurePreviewFamily => Boolean(item)
+    )
+  const blockers = (Array.isArray(source.blockers) ? source.blockers : [])
+    .map(item => {
+      const blocker = asObject(item)
+      const code = String(blocker.code || '').trim()
+      if (!code) return null
+      const blockerFamilyIds = normalizeClosureFamilyIds(blocker.familyIds)
+      const fundingIds = normalizeClosureFamilyIds(blocker.fundingIds)
+      return {
+        code,
+        ...(blockerFamilyIds.length ? { familyIds: blockerFamilyIds } : {}),
+        ...(fundingIds.length ? { fundingIds } : {})
+      }
+    })
+    .filter(
+      (item): item is CboardClosurePreviewBlocker => Boolean(item)
+    )
+  if (families.length !== source.families.length || blockers.length !== source.blockers.length ||
+      families.length !== familyIds.length ||
+      new Set(families.map(family => family.familyId)).size !== familyIds.length ||
+      families.some(family => !familyIds.includes(family.familyId))) return undefined
+  return {
+    familyIds,
+    families,
+    blockers,
+    canConfirm: source.canConfirm === true && blockers.length === 0 && !families.some(family => family.requiresTransfer),
+    confirmationRequired: Boolean(source.confirmationRequired),
+    revalidationRequired: Boolean(source.revalidationRequired),
+    deletesCloudData: Boolean(source.deletesCloudData),
+    preservesLocalData: Boolean(source.preservesLocalData)
+  }
 }
 
 function normalizeSubscriptionPrice(
@@ -467,11 +603,18 @@ export function createCboardAccountPort(
         path === '/communication/receiver-records/sync' ||
         path === '/communication/saved-phrases' ||
         path === '/communication/saved-phrases/sync' ||
-        path.startsWith('/account/')
+        path.startsWith('/account/') ||
+        (path.startsWith('/care/account/') &&
+          path !== '/care/account/closure-status')
       ) &&
       !authToken
     ) {
-      return { ok: false, message: '请先登录，再同步常用语和沟通历史。' }
+      return {
+        ok: false,
+        message: path.startsWith('/care/account/')
+          ? '请先登录，再管理云端账号。'
+          : '请先登录，再同步常用语和沟通历史。'
+      }
     }
 
     const header: Record<string, string> = {
@@ -807,6 +950,122 @@ export function createCboardAccountPort(
             ...(result.code ? { code: result.code } : {}),
             ...(result.familyIds ? { familyIds: result.familyIds } : {})
           }
+    },
+
+    async previewAccountClosure(token) {
+      const result = await request(
+        '/care/account/closure-preview',
+        'GET',
+        undefined,
+        token
+      )
+      if (!result.ok || !result.value) return { ok: false, message: result.message, code: result.code, status: result.status }
+      const value = normalizeClosurePreview(result.value)
+      return value
+        ? { ok: true, message: '已读取云端账号注销预览。', value }
+        : { ok: false, message: '注销预览响应不完整，请稍后重试。' }
+    },
+
+    async prepareAccountClosure(token) {
+      const result = await request(
+        '/care/account/closure-receipt',
+        'POST',
+        undefined,
+        token
+      )
+      if (!result.ok || !result.value) return { ok: false, message: result.message, code: result.code, status: result.status }
+      const receiptId = normalizeClosureReceiptId(result.value.receiptId)
+      const secret = normalizeOpaqueToken(result.value.secret)
+      const expiresAt = Number(result.value.expiresAt)
+      if (!receiptId || !secret || !Number.isInteger(expiresAt) || expiresAt < 1) {
+        return { ok: false, message: '注销确认凭据响应不完整，请稍后重试。' }
+      }
+      return {
+        ok: true,
+        message: '已生成注销确认凭据。',
+        value: { receiptId, secret, expiresAt }
+      }
+    },
+
+    async confirmAccountClosure(token, input) {
+      const familyIds = normalizeClosureFamilyIds(input?.familyIds)
+      const secret = normalizeOpaqueToken(input?.secret)
+      if (
+        !Array.isArray(input?.familyIds) ||
+        familyIds.length !== input.familyIds.length ||
+        familyIds.length > 1000 ||
+        !secret ||
+        input.confirmCloudDeletion !== true
+      ) {
+        return { ok: false, message: '注销确认信息不完整，请重新确认。' }
+      }
+      const result = await request(
+        '/care/account/closure-confirm',
+        'POST',
+        { familyIds, secret, confirmCloudDeletion: true },
+        token
+      )
+      if (!result.ok || !result.value) return { ok: false, message: result.message, code: result.code, status: result.status }
+      const operationId = normalizeText(String(result.value.operationId || ''), 80)
+      const cleanupStatus = normalizeText(
+        String(result.value.cleanupStatus || ''),
+        80
+      )
+      if (!operationId || !cleanupStatus || result.value.accountDeleted !== false) {
+        return { ok: false, code: 'INVALID_RESPONSE', message: '注销确认响应不完整，请查询进度。' }
+      }
+      return {
+        ok: true,
+        message: '注销已受理，云端清理仍在进行中。',
+        value: { operationId, cleanupStatus, accountDeleted: false as const }
+      }
+    },
+
+    async getAccountClosureStatus(input) {
+      const receiptId = normalizeClosureReceiptId(input?.receiptId)
+      const secret = normalizeOpaqueToken(input?.secret)
+      if (!receiptId || !secret) {
+        return { ok: false, message: '注销状态凭据无效。' }
+      }
+      const result = await request(
+        '/care/account/closure-status',
+        'POST',
+        { receiptId, secret }
+      )
+      if (!result.ok || !result.value) return { ok: false, message: result.message, code: result.code, status: result.status }
+      const status = result.value.status === 'confirmed'
+        ? 'confirmed'
+        : result.value.status === 'prepared'
+          ? 'prepared'
+          : ''
+      const expiresAt = Number(result.value.expiresAt)
+      if (!status || !Number.isInteger(expiresAt) || expiresAt < 1) {
+        return { ok: false, message: '注销状态响应不完整，请稍后重试。' }
+      }
+      const operationId = normalizeText(String(result.value.operationId || ''), 80)
+      const cleanupStatus = normalizeText(
+        String(result.value.cleanupStatus || ''),
+        80
+      )
+      const updatedAt = Number(result.value.updatedAt)
+      if (typeof result.value.accountDeleted !== 'boolean' ||
+          (status === 'prepared' && result.value.accountDeleted) ||
+          (status === 'confirmed' && (!operationId || !cleanupStatus ||
+            result.value.accountDeleted !== (cleanupStatus === 'complete')))) {
+        return { ok: false, code: 'INVALID_RESPONSE', message: '注销状态响应不完整，请稍后查询。' }
+      }
+      return {
+        ok: true,
+        message: '已读取注销状态。',
+        value: {
+          status,
+          accountDeleted: result.value.accountDeleted,
+          expiresAt,
+          ...(operationId ? { operationId } : {}),
+          ...(cleanupStatus ? { cleanupStatus } : {}),
+          ...(Number.isInteger(updatedAt) && updatedAt > 0 ? { updatedAt } : {})
+        }
+      }
     },
 
     async getSettings(token) {

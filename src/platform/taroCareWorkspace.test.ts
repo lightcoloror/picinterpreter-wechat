@@ -5,9 +5,10 @@ const h = vi.hoisted(() => {
   const context = { accountId: 'synthetic-account', familyId: 'synthetic-family', profileId: 'synthetic-patient' }
   const resources: Record<string, any> = { 'board:b': { kind: 'board', id: 'b', value: { tileIds: ['a'] } } }
   const engine = { init: vi.fn(), sync: vi.fn(), view: () => ({ locked: true, resources }), edit: vi.fn() }
-  return { values, context, engine, queue: vi.fn(), scoped: (key: string) => `scope:${key}` }
+  return { values, context, engine, modal: vi.fn(), queue: vi.fn(), scoped: (key: string) => `scope:${key}` }
 })
 vi.mock('@tarojs/taro', () => ({ default: {
+  showModal: h.modal,
   getStorageSync: (key: string) => h.values.get(key),
   setStorageSync: (key: string, value: unknown) => h.values.set(key, value),
   removeStorageSync: (key: string) => h.values.delete(key),
@@ -23,6 +24,25 @@ vi.mock('./taroCommunicationRepository', () => ({ createTaroCommunicationReposit
 vi.mock('./taroPictogramOrderingStore', () => ({ taroPictogramOrderingStore: {} }))
 vi.mock('./communicationCloudSync', () => ({ configureCareCloudSync: vi.fn() }))
 vi.mock('../config/runtimeCapabilities', () => ({ apiBaseUrlFor: vi.fn() }))
+
+test('quota pause survives automatic refresh and clears only after a successful manual retry', async () => {
+  h.values.clear()
+  h.engine.sync.mockReset()
+  h.modal.mockClear()
+  const error = { status: 413, data: { code: 'FAMILY_MEDIA_QUOTA_EXCEEDED' } }
+  h.engine.sync.mockRejectedValueOnce(error).mockResolvedValue(undefined)
+  const { synchronizeCareWorkspace } = await import('./taroCareWorkspace')
+  await expect(synchronizeCareWorkspace({ automatic: true })).rejects.toBe(error)
+  expect(h.values.get(h.scoped('care-media-quota-paused'))).toBe(true)
+  expect(h.modal).toHaveBeenCalledTimes(1)
+  await synchronizeCareWorkspace({ automatic: true })
+  expect(h.engine.sync).toHaveBeenLastCalledWith({ skipMediaUploads: true })
+  expect(h.values.get(h.scoped('care-media-quota-paused'))).toBe(true)
+  expect(h.modal).toHaveBeenCalledTimes(1)
+  await synchronizeCareWorkspace()
+  expect(h.engine.sync).toHaveBeenLastCalledWith({ skipMediaUploads: false })
+  expect(h.values.has(h.scoped('care-media-quota-paused'))).toBe(false)
+})
 
 test('shared phrases use only the current scope and disappear when access is locked or no profile is selected', async () => {
   h.values.clear()

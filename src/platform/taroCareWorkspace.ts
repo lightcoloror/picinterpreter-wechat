@@ -66,7 +66,7 @@ function project(engine: ReturnType<typeof createCareSync>) {
   }
   Taro.eventCenter.trigger('care-content-changed')
 }
-export async function synchronizeCareWorkspace(options: { localOnly?: boolean } = {}) {
+export async function synchronizeCareWorkspace(options: { localOnly?: boolean; automatic?: boolean } = {}) {
   if (pending) {
     if (!options.localOnly) return pending
     // A network failure must not prevent the final local queue flush for export.
@@ -133,7 +133,22 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean } 
         if (Taro.getStorageSync(rateKey) === rate) Taro.removeStorageSync(rateKey)
       }
       // A password archive provides local content, never an online identity.
-      if (context.accountId !== 'offline' && !options.localOnly) await engine.sync()
+      if (context.accountId !== 'offline' && !options.localOnly) {
+        const pauseKey = scoped('care-media-quota-paused')
+        const paused = Boolean(Taro.getStorageSync(pauseKey))
+        try {
+          await engine.sync({ skipMediaUploads: Boolean(options.automatic && paused) })
+          if (!options.automatic) Taro.removeStorageSync(pauseKey)
+        } catch (error: any) {
+          if (error?.data?.code === 'FAMILY_MEDIA_QUOTA_EXCEEDED') {
+            Taro.setStorageSync(pauseKey, true)
+            if ((!paused || !options.automatic) && currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) {
+              void Taro.showModal({ title: '云存储已满', content: '图片自动上传已暂停，本地内容仍保留。释放云端空间后，可在设置中手动同步重试；其他内容继续同步。', showCancel: false })
+            }
+          }
+          throw error
+        }
+      }
     } finally { if (currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) project(engine) }
   })().finally(() => { pending = null })
   return pending
@@ -152,7 +167,7 @@ export function startCareWorkspace() {
     }
     return chain.proceed(params)
   })
-  const update = () => { void synchronizeCareWorkspace().catch(() => undefined) }
+  const update = () => { void synchronizeCareWorkspace({ automatic: true }).catch(() => undefined) }
   const stop = runtime.watch(update)
   Taro.eventCenter.on('care-local-change', update)
   const identityChanged = () => { active = null; void Taro.reLaunch({ url: '/pages/index/index' }) }

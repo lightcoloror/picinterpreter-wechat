@@ -258,6 +258,7 @@ export default function AccountSyncPanel({
       verificationToken: phoneVerificationToken
     })
     if (
+      normalizedPhone &&
       phoneVerificationConfiguration &&
       phoneVerificationConfiguration.requiredForPhoneRegistration &&
       !phoneVerified
@@ -275,6 +276,7 @@ export default function AccountSyncPanel({
       setPhone('')
       setPassword('')
       resetPhoneVerification()
+      setMode('login')
     }
   }
 
@@ -546,7 +548,7 @@ export default function AccountSyncPanel({
                 className='account-sync__input'
                 type='number'
                 maxlength={11}
-                placeholder='中国大陆 11 位手机号'
+                placeholder={mode === 'register' ? '手机号（可选，中国大陆 11 位）' : '中国大陆 11 位手机号'}
                 value={phone}
                 onInput={event => {
                   const nextPhone = event.detail.value
@@ -696,7 +698,7 @@ export default function AccountSyncPanel({
               (mode === 'register' &&
                 (phoneVerificationLoading ||
                   !phoneVerificationConfiguration ||
-                  (phoneVerificationConfiguration
+                  (Boolean(normalizeMainlandChinaPhone(phone)) && phoneVerificationConfiguration
                     .requiredForPhoneRegistration &&
                     !hasMatchingPhoneVerification({
                       phone,

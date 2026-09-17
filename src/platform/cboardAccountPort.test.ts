@@ -165,6 +165,15 @@ describe('cboardAccountPort', () => {
       }
     }))
   })
+  test('allows email-only registration without sending an unrelated phone token', async () => {
+    const harness = createHarness()
+    const result = await harness.port.register({ name: '照护者', email: 'care@example.test', phone: '', password: '123456', phoneVerificationToken: 'b'.repeat(64) })
+    expect(result.ok).toBe(true)
+    expect(harness.request).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'https://api.example.test/user',
+      data: { name: '照护者', email: 'care@example.test', password: '123456' }
+    }))
+  })
 
   test('logs in with a purpose-bound phone verification token', async () => {
     const harness = createHarness()

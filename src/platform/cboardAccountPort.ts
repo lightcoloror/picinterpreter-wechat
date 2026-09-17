@@ -827,22 +827,22 @@ export function createCboardAccountPort(
       if (
         !name ||
         !email ||
-        !isValidMainlandChinaPhone(phone) ||
+        (Boolean(phone) && !isValidMainlandChinaPhone(phone)) ||
         !password
       ) {
         return {
           ok: false,
           message:
-            '请输入姓名、有效邮箱、中国大陆 11 位手机号和至少 6 位密码。'
+            '请输入姓名、有效邮箱和至少 6 位密码；如填写手机号，请使用中国大陆 11 位手机号。'
         }
       }
 
       const result = await request('/user', 'POST', {
         name,
         email,
-        phone,
+        ...(phone ? { phone } : {}),
         password,
-        ...(phoneVerificationToken ? { phoneVerificationToken } : {})
+        ...(phone && phoneVerificationToken ? { phoneVerificationToken } : {})
       })
       if (!result.ok) return { ok: false, message: result.message }
       return {

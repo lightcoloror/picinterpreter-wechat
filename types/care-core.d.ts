@@ -22,7 +22,7 @@ declare module '@cboard-communication-core/careSync' {
     view(): CareSnapshot
     archive(): CareSnapshot
     init(): Promise<CareSnapshot>
-    sync(options?: { skipMediaUploads?: boolean }): Promise<CareSnapshot>
+    sync(options?: { skipMediaUploads?: boolean; automatic?: boolean }): Promise<CareSnapshot>
     edit(kind: string, id: string, value: unknown, action?: string): Promise<void>
     addMedia(value: any): Promise<void>
     importPreview(value: any): Promise<void>

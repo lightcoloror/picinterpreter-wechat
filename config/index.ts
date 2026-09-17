@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin'
+import type { Compiler } from 'webpack'
 import devConfig from './dev'
 import prodConfig from './prod'
 
@@ -16,12 +17,12 @@ try {
   }).trim()
 } catch (_) {}
 class ReleaseFeatureManifestPlugin {
-  constructor(flags) { this.flags = flags }
-  apply(compiler) {
+  constructor(private readonly flags: Record<string, string | number | boolean>) {}
+  apply(compiler: Compiler) {
     compiler.hooks.afterEmit.tap('ReleaseFeatureManifestPlugin', () => {
       const root = compiler.outputPath
-      const files = []
-      const visit = relative => {
+      const files: string[] = []
+      const visit = (relative: string): void => {
         const directory = path.join(root, relative)
         for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
           const child = path.join(relative, entry.name)

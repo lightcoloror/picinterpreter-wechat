@@ -137,8 +137,11 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
         const pauseKey = scoped('care-media-quota-paused')
         const paused = Boolean(Taro.getStorageSync(pauseKey))
         try {
-          await engine.sync({ skipMediaUploads: Boolean(options.automatic && paused) })
-          if (!options.automatic) Taro.removeStorageSync(pauseKey)
+          // The shared engine persists the upload pause with the media itself.
+          // This local key only prevents repeated notices; it must never suppress
+          // an upload after another Care view has successfully retried it.
+          await engine.sync({ automatic: Boolean(options.automatic) })
+          Taro.removeStorageSync(pauseKey)
         } catch (error: any) {
           if (error?.data?.code === 'FAMILY_MEDIA_QUOTA_EXCEEDED') {
             Taro.setStorageSync(pauseKey, true)

@@ -25,23 +25,27 @@ vi.mock('./taroPictogramOrderingStore', () => ({ taroPictogramOrderingStore: {} 
 vi.mock('./communicationCloudSync', () => ({ configureCareCloudSync: vi.fn() }))
 vi.mock('../config/runtimeCapabilities', () => ({ apiBaseUrlFor: vi.fn() }))
 
-test('quota pause survives automatic refresh and clears only after a successful manual retry', async () => {
+test('quota notice state deduplicates automatic failures and clears after another view recovers the engine', async () => {
   h.values.clear()
   h.engine.sync.mockReset()
   h.modal.mockClear()
   const error = { status: 413, data: { code: 'FAMILY_MEDIA_QUOTA_EXCEEDED' } }
-  h.engine.sync.mockRejectedValueOnce(error).mockResolvedValue(undefined)
+  h.engine.sync.mockRejectedValueOnce(error).mockRejectedValueOnce(error).mockResolvedValue(undefined)
   const { synchronizeCareWorkspace } = await import('./taroCareWorkspace')
   await expect(synchronizeCareWorkspace({ automatic: true })).rejects.toBe(error)
   expect(h.values.get(h.scoped('care-media-quota-paused'))).toBe(true)
   expect(h.modal).toHaveBeenCalledTimes(1)
-  await synchronizeCareWorkspace({ automatic: true })
-  expect(h.engine.sync).toHaveBeenLastCalledWith({ skipMediaUploads: true })
+  await expect(synchronizeCareWorkspace({ automatic: true })).rejects.toBe(error)
+  expect(h.engine.sync).toHaveBeenLastCalledWith({ automatic: true })
   expect(h.values.get(h.scoped('care-media-quota-paused'))).toBe(true)
   expect(h.modal).toHaveBeenCalledTimes(1)
-  await synchronizeCareWorkspace()
-  expect(h.engine.sync).toHaveBeenLastCalledWith({ skipMediaUploads: false })
+  // CarePanel has its own engine instance but shares this persisted core state.
+  await h.engine.sync({ automatic: false })
+  expect(h.values.get(h.scoped('care-media-quota-paused'))).toBe(true)
+  await synchronizeCareWorkspace({ automatic: true })
+  expect(h.engine.sync).toHaveBeenLastCalledWith({ automatic: true })
   expect(h.values.has(h.scoped('care-media-quota-paused'))).toBe(false)
+  expect(h.modal).toHaveBeenCalledTimes(1)
 })
 
 test('shared phrases use only the current scope and disappear when access is locked or no profile is selected', async () => {

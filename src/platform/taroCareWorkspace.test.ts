@@ -48,6 +48,24 @@ test('quota notice state deduplicates automatic failures and clears after anothe
   expect(h.modal).toHaveBeenCalledTimes(1)
 })
 
+test.each(['INVALID_MEDIA', 'INVALID_IMAGE', 'MEDIA_CHECKSUM_MISMATCH'])('notifies once for automatic %s and clears the notice after recovery', async code => {
+  h.values.clear()
+  h.modal.mockClear()
+  h.engine.sync.mockReset()
+  const error = { status: 400, data: { code } }
+  h.engine.sync.mockRejectedValue(error)
+  const { synchronizeCareWorkspace } = await import('./taroCareWorkspace')
+  await expect(synchronizeCareWorkspace({ automatic: true })).rejects.toBe(error)
+  await expect(synchronizeCareWorkspace({ automatic: true })).rejects.toBe(error)
+  expect(h.modal).toHaveBeenCalledTimes(1)
+  expect(h.modal.mock.calls[0][0].content).toContain('本地图片仍保留')
+  await expect(synchronizeCareWorkspace()).rejects.toBe(error)
+  expect(h.modal).toHaveBeenCalledTimes(2)
+  h.engine.sync.mockResolvedValue(undefined)
+  await synchronizeCareWorkspace({ automatic: true })
+  expect(h.values.has(h.scoped('care-media-invalid-notice'))).toBe(false)
+})
+
 test('shared phrases use only the current scope and disappear when access is locked or no profile is selected', async () => {
   h.values.clear()
   const { loadCareSharedPhrases } = await import('./taroCareWorkspace')

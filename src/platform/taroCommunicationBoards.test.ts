@@ -27,7 +27,10 @@ test('new patient can use packaged adult-care symbols without saving them into t
 test('patient library takes precedence, removed data is not restored, and locked access stays empty', () => {
   const own = [{ id: 'private-patient-a', tiles: [] }]
   h.boards = own
-  expect(loadCommunicationBoards()).toBe(own)
+  const displayed = loadCommunicationBoards()
+  expect(displayed).toContain(own[0])
+  expect(displayed.find(board => board.id === 'root')?.tiles.some(tile => tile.label === '我要喝水')).toBe(true)
+  expect(h.boards).toBe(own)
   h.context = { profileId: 'patient-b' }
   h.boards = []
   expect(loadCommunicationBoards().some(board => board.id === 'private-patient-a')).toBe(false)
@@ -35,6 +38,17 @@ test('patient library takes precedence, removed data is not restored, and locked
   h.locked = true
   expect(loadCommunicationBoards()).toEqual([])
   h.locked = false
+})
+
+test('a patient board overrides the same bundled identity without duplicated boards or writes', () => {
+  h.locked = false
+  const replacement = { ...DEFAULT_BOARD_FIXTURES[0], tiles: [] }
+  h.boards = [replacement]
+  const displayed = loadCommunicationBoards()
+  expect(displayed.filter(board => board.id === replacement.id)).toEqual([replacement])
+  expect(new Set(displayed.map(board => board.id)).size).toBe(displayed.length)
+  expect(h.boards).toEqual([replacement])
+  expect(h.save).not.toHaveBeenCalled()
 })
 
 test('the shipped mini catalog resolves every Web default reference to its corresponding packaged symbol', () => {

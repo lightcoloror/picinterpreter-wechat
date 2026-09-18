@@ -15,6 +15,7 @@ import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { configureCareCloudSync } from './communicationCloudSync'
 import { taroPictogramOrderingStore } from './taroPictogramOrderingStore'
 import { careBuiltinImages } from './taroCareBuiltinImages'
+import { careErrorMessage } from '@cboard-communication-core/careErrors'
 
 let active: { key: string; engine: ReturnType<typeof createCareSync> } | null = null
 let pending: Promise<void> | null = null
@@ -146,7 +147,17 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
           // an upload after another Care view has successfully retried it.
           await engine.sync({ automatic: Boolean(options.automatic) })
           Taro.removeStorageSync(pauseKey)
+          Taro.removeStorageSync(scoped('care-media-invalid-notice'))
         } catch (error: any) {
+          const code = error?.data?.code
+          if (['INVALID_MEDIA', 'INVALID_IMAGE', 'MEDIA_CHECKSUM_MISMATCH'].includes(code) && currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) {
+            const noticeKey = scoped('care-media-invalid-notice')
+            const previous = Taro.getStorageSync(noticeKey)
+            Taro.setStorageSync(noticeKey, code)
+            if (previous !== code || !options.automatic) {
+              void Taro.showModal({ title: '有图片尚未同步', content: careErrorMessage(error), showCancel: false })
+            }
+          }
           if (error?.data?.code === 'FAMILY_MEDIA_QUOTA_EXCEEDED') {
             Taro.setStorageSync(pauseKey, true)
             if ((!paused || !options.automatic) && currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) {

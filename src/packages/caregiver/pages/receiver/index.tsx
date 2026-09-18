@@ -67,7 +67,7 @@ import { taroCommunicationPreferencesStore } from '../../../../platform/taroComm
 import { createTaroCommunicationRepository } from '../../../../platform/taroCommunicationRepository'
 import { taroPictogramSearchPort } from '../../../../platform/taroPictogramSearchPort'
 import type { RuntimePictogram } from '../../../../platform/pictogramSearchPort'
-import { taroPictureLibraryStore } from '../../../../platform/taroPictureLibraryStore'
+import { loadCommunicationBoards } from '../../../../platform/taroCommunicationBoards'
 import '../../../../features/communication/CommunicationPage.css'
 import { useCareRefresh } from '../../../../platform/taroCareWorkspace'
 
@@ -114,7 +114,7 @@ export default function ReceiverPage() {
   const personalImagePreferences = initialPersonalImagePreferencesRef.current
   const initialLibraryBoardsRef = useRef<BoardDTO[] | null>(null)
   if (!initialLibraryBoardsRef.current) {
-    initialLibraryBoardsRef.current = taroPictureLibraryStore.load()
+    initialLibraryBoardsRef.current = loadCommunicationBoards()
   }
 
   const initialHistoryRef = useRef<CommunicationHistoryEntry[] | null>(null)
@@ -161,7 +161,7 @@ export default function ReceiverPage() {
   const [, setCareRevision] = useState(0)
   useCareRefresh(() => {
     initialPreferencesRef.current = taroCommunicationPreferencesStore.load()
-    initialLibraryBoardsRef.current = taroPictureLibraryStore.load()
+    initialLibraryBoardsRef.current = loadCommunicationBoards()
     initialPersonalImagePreferencesRef.current = repositoryRef.current.loadPersonalImagePreferences()
     setHistoryItems(repositoryRef.current.loadCommunicationHistory())
     setCareRevision(value => value + 1)

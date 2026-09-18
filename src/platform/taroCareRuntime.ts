@@ -6,6 +6,7 @@ import { taroCboardSessionStore } from './taroCboardAccountPort'
 import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { wechatSpeechPort } from './taroSpeechPort'
 import { saveCareSelection, type CareSelection } from './taroCareContext'
+import { careBuiltinImages } from './taroCareBuiltinImages'
 
 export const identity = () => {
   const s = taroCboardSessionStore.load()
@@ -23,6 +24,7 @@ function requestError(status: number, data: unknown) {
   return Object.assign(new Error(message), { status, data })
 }
 export const runtime = {
+  resolveBuiltinImage: careBuiltinImages.resolve,
   enabled: process.env.TARO_APP_CARE_COLLABORATION === 'true',
   trialEnabled: process.env.TARO_APP_CARE_PUBLIC_TRIAL === 'true',
   identity,

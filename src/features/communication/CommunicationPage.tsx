@@ -42,7 +42,7 @@ import { taroCommunicationNavigationIntent } from '../../platform/taroCommunicat
 import { taroCommunicationPreferencesStore } from '../../platform/taroCommunicationPreferencesStore'
 import { taroPictogramOrderingStore } from '../../platform/taroPictogramOrderingStore'
 import { createTaroCommunicationRepository } from '../../platform/taroCommunicationRepository'
-import { taroPictureLibraryStore } from '../../platform/taroPictureLibraryStore'
+import { loadCommunicationBoards } from '../../platform/taroCommunicationBoards'
 import CommunicationOnboarding from './CommunicationOnboarding'
 import ExpressionWorkspace from './ExpressionWorkspace'
 import NetworkStatusNotice from './NetworkStatusNotice'
@@ -80,7 +80,7 @@ export default function CommunicationPage() {
   const communicationIdentity = communicationIdentityRef.current
   const initialLibraryBoardsRef = useRef<BoardDTO[] | null>(null)
   if (!initialLibraryBoardsRef.current) {
-    initialLibraryBoardsRef.current = taroPictureLibraryStore.load()
+    initialLibraryBoardsRef.current = loadCommunicationBoards()
   }
   const libraryVersionRef = useRef(
     JSON.stringify(initialLibraryBoardsRef.current)
@@ -274,7 +274,7 @@ export default function CommunicationPage() {
     setSharedPhraseItems(loadCareSharedPhrases())
     const nextPersonalImagePreferences =
       repositoryRef.current.loadPersonalImagePreferences()
-    const nextLibraryBoards = taroPictureLibraryStore.load()
+    const nextLibraryBoards = loadCommunicationBoards()
     const nextPersonalizedBoards = applyPersonalImagePreferencesToBoards(
       nextLibraryBoards,
       nextPersonalImagePreferences,

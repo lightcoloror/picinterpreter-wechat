@@ -6,6 +6,14 @@ declare module '@cboard-communication-core/CarePanel' {
 declare module '@cboard-communication-core/careErrors' {
   export function careErrorMessage(error: any): string
 }
+declare module '@cboard-communication-core/careBuiltinImages' {
+  import type { BoardDTO } from '@cboard-communication-core/dto'
+  export interface CareBuiltinImage { catalog: string; boardId: string; tileId: string }
+  export function createCareBuiltinImages(boards: BoardDTO[]): {
+    reference(source: string): CareBuiltinImage | null
+    resolve(reference: CareBuiltinImage): string
+  }
+}
 declare module '@cboard-communication-core/careSync' {
   export interface CareSnapshot {
     cursor: number

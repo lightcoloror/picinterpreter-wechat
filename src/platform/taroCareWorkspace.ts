@@ -14,6 +14,7 @@ import { createTaroCommunicationRepository } from './taroCommunicationRepository
 import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { configureCareCloudSync } from './communicationCloudSync'
 import { taroPictogramOrderingStore } from './taroPictogramOrderingStore'
+import { careBuiltinImages } from './taroCareBuiltinImages'
 
 let active: { key: string; engine: ReturnType<typeof createCareSync> } | null = null
 let pending: Promise<void> | null = null
@@ -23,6 +24,8 @@ export function loadCareSharedPhrases() {
   return Taro.getStorageSync(careScopedKey('care-shared-favorites')) || []
 }
 async function readImage(source: string) {
+  const builtinImage = careBuiltinImages.reference(source)
+  if (builtinImage) return { builtinImage }
   const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(source)
   const bytes = match ? new Uint8Array(Taro.base64ToArrayBuffer(match[2]))
     : source.startsWith(String(Taro.env.USER_DATA_PATH || '/invalid-local-root/')) || source.startsWith('wxfile://')
@@ -37,6 +40,7 @@ function project(engine: ReturnType<typeof createCareSync>) {
   if (snapshot.locked) Taro.setStorageSync(careScopedKey('care-shared-favorites'), [])
   if (!snapshot.locked) {
     const image = (asset: any) => {
+      if (asset.builtinImage) return careBuiltinImages.resolve(asset.builtinImage)
       const path = `${Taro.env.USER_DATA_PATH}/care-picture-${bytesToHex(sha256(careScopedKey(asset.mediaId)))}.${asset.type === 'image/jpeg' ? 'jpg' : asset.type.split('/')[1]}`
       Taro.getFileSystemManager().writeFileSync(path, Taro.base64ToArrayBuffer(asset.data))
       return path

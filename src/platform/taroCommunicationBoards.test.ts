@@ -1,9 +1,9 @@
 import { expect, test, vi } from 'vitest'
+import { createCareBuiltinImages } from '@cboard-communication-core/careBuiltinImages'
 import { DEFAULT_BOARD_FIXTURES } from '../fixtures/defaultBoard'
 import { loadCommunicationBoards } from './taroCommunicationBoards'
 import { careBuiltinImages } from './taroCareBuiltinImages'
 import webBoards from '../../../cboard/src/api/boards.json'
-import { createCareBuiltinImages } from '@cboard-communication-core/careBuiltinImages'
 
 const h = vi.hoisted(() => ({ locked: false, boards: [] as any[], context: { profileId: 'patient-a' }, save: vi.fn() }))
 vi.mock('@tarojs/taro', () => ({ default: { getStorageSync: () => h.locked } }))
@@ -25,10 +25,22 @@ test('new patient can use packaged adult-care symbols without saving them into t
 })
 
 test('patient library takes precedence, removed data is not restored, and locked access stays empty', () => {
-  const own = [{ id: 'private-patient-a', tiles: [] }]
+  const sourceRootTiles = [...DEFAULT_BOARD_FIXTURES.find(board => board.id === 'root')!.tiles]
+  const own = [{ id: 'private-patient-a', name: 'patient test board', tiles: [] }]
   h.boards = own
   const displayed = loadCommunicationBoards()
   expect(displayed).toContain(own[0])
+  const root = displayed.find(board => board.id === 'root')!
+  expect(root.tiles.filter(tile => tile.loadBoardId === own[0].id).map(tile => tile.label)).toEqual([
+    'patient test board'
+  ])
+  expect(
+    loadCommunicationBoards()
+      .find(board => board.id === 'root')
+      ?.tiles.filter(tile => tile.loadBoardId === own[0].id)
+  ).toHaveLength(1)
+  expect(DEFAULT_BOARD_FIXTURES.find(board => board.id === 'root')!.tiles).toEqual(sourceRootTiles)
+  expect(own[0].tiles).toEqual([])
   expect(displayed.find(board => board.id === 'root')?.tiles.some(tile => tile.label === '我要喝水')).toBe(true)
   expect(h.boards).toBe(own)
   h.context = { profileId: 'patient-b' }

@@ -80,10 +80,14 @@ function requireSuccessfulResponse(
   response: { statusCode: number; data?: unknown },
   action: string
 ) {
+  const body = asRecord(parseResponseData(response.data))
   if (response.statusCode < 200 || response.statusCode >= 300) {
+    if (body?.code === 'LEGACY_MEDIA_UPLOAD_DISABLED') {
+      throw new Error('公开试用期间不支持旧版媒体上传，请在患者档案图库中添加图片并同步。')
+    }
     throw new Error(`${action}失败（HTTP ${response.statusCode}）`)
   }
-  return asRecord(parseResponseData(response.data))
+  return body
 }
 
 function requireIdentity(

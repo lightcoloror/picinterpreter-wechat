@@ -4,8 +4,8 @@ const h = vi.hoisted(() => {
   const values = new Map<string, unknown>()
   const context = { accountId: 'synthetic-account', familyId: 'synthetic-family', profileId: 'synthetic-patient' }
   const resources: Record<string, any> = { 'board:b': { kind: 'board', id: 'b', value: { tileIds: ['a'] } } }
-  const engine = { init: vi.fn(), sync: vi.fn(), view: () => ({ locked: true, resources }), edit: vi.fn() }
-  return { values, context, engine, modal: vi.fn(), queue: vi.fn(), scoped: (key: string) => `scope:${key}` }
+  const engine = { init: vi.fn(), sync: vi.fn(), view: vi.fn(() => ({ locked: true, permissions: [], resources })), edit: vi.fn() }
+  return { values, context, engine, modal: vi.fn(), queue: vi.fn(), saveSelection: vi.fn(), scoped: (key: string) => `scope:${key}` }
 })
 vi.mock('@tarojs/taro', () => ({ default: {
   showModal: h.modal,
@@ -17,13 +17,39 @@ vi.mock('@tarojs/taro', () => ({ default: {
 vi.mock('@cboard-communication-core/careSync', () => ({ createCareSync: () => h.engine }))
 vi.mock('@cboard-communication-core/careProjection', () => ({ queueCareBoards: h.queue, projectCareBoards: vi.fn() }))
 vi.mock('@cboard-communication-core/careMediaValues', () => ({ encodeCareMedia: async (value: unknown) => value, decodeCareMedia: vi.fn() }))
-vi.mock('./taroCareContext', () => ({ currentCareContext: () => h.context, careScopedKey: h.scoped, withCareHydration: vi.fn() }))
+vi.mock('./taroCareContext', () => ({ currentCareContext: () => h.context, careScopedKey: h.scoped, saveCareSelection: h.saveSelection, withCareHydration: vi.fn() }))
 vi.mock('./taroCareRuntime', () => ({ runtime: {} }))
 vi.mock('./taroPictureLibraryStore', () => ({ taroPictureLibraryStore: {} }))
 vi.mock('./taroCommunicationRepository', () => ({ createTaroCommunicationRepository: vi.fn() }))
 vi.mock('./taroPictogramOrderingStore', () => ({ taroPictogramOrderingStore: {} }))
 vi.mock('./communicationCloudSync', () => ({ configureCareCloudSync: vi.fn() }))
 vi.mock('../config/runtimeCapabilities', () => ({ apiBaseUrlFor: vi.fn() }))
+
+test('projection refreshes only the currently selected account/profile grant and lock state', async () => {
+  h.values.clear()
+  h.saveSelection.mockClear()
+  h.engine.init.mockReset().mockResolvedValue(undefined)
+  h.engine.sync.mockReset().mockResolvedValue(undefined)
+  const selection = {
+    id: h.context.profileId,
+    familyId: h.context.familyId,
+    name: '合成档案',
+    relationship: { role: 'relative', defaultMode: 'receiver' },
+    permissions: ['read', 'library.edit'],
+    locked: false
+  }
+  Object.assign(h.context, { selection })
+
+  const { synchronizeCareWorkspace } = await import('./taroCareWorkspace')
+  await synchronizeCareWorkspace({ localOnly: true })
+
+  expect(h.saveSelection).toHaveBeenCalledWith({
+    ...selection,
+    permissions: [],
+    locked: true
+  })
+  expect(h.saveSelection.mock.calls[0][0]).not.toHaveProperty('token')
+})
 
 test('quota notice state deduplicates automatic failures and clears after another view recovers the engine', async () => {
   h.values.clear()

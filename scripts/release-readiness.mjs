@@ -3,12 +3,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildArtifactFingerprint, readBuiltFeatureManifest } from './build-feature-manifest.mjs'
 import { execFileSync } from 'node:child_process'
+import { isIP } from 'node:net'
+import capabilityPolicy from '../src/config/runtimeCapabilityPolicy.js'
 
 const DEFAULT_CONFIG = '.release-readiness.local.json'
 
-export function hasTrackedChanges(cwd = process.cwd()) {
+export function hasSourceChanges(cwd = process.cwd()) {
   try {
-    return Boolean(execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+    return Boolean(execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], {
       cwd, encoding: 'utf8'
     }).trim())
   } catch (_) {
@@ -19,20 +21,42 @@ export function hasTrackedChanges(cwd = process.cwd()) {
 function isHttpsPublicUrl(value) {
   try {
     const url = new URL(String(value || '').trim())
+    const hostname = url.hostname.replace(/\.$/, '')
     return (
       url.protocol === 'https:' &&
-      url.hostname !== 'localhost' &&
-      url.hostname !== '127.0.0.1' &&
-      !url.hostname.endsWith('.local') &&
-      !url.hostname.endsWith('.test')
+      !url.username && !url.password &&
+      !isIP(hostname.replace(/^\[|\]$/g, '')) &&
+      hostname.includes('.') &&
+      !['localhost', 'local', 'test', 'invalid', 'internal', 'home.arpa']
+        .some(suffix => hostname === suffix || hostname.endsWith(`.${suffix}`))
     )
   } catch {
     return false
   }
 }
 
+const isHttpsApiUrl = capabilityPolicy.isPublicHttpsApiUrl
+
 export function evaluateReleaseReadiness(config = {}, buildManifest = null) {
   const issues = []
+  const publicTrialRequired = config.publicTrial === true || buildManifest?.publicTrial === true
+  const capabilityFields = ['cloudFeatures', 'aiFeatures', 'ocr', 'onlinePictograms', 'dialectAsr',
+    'careCollaboration', 'accountClosure', 'publicTrial']
+  const manifestComplete = buildManifest && buildManifest.schema === 1 &&
+    buildManifest.marker === 'cboard-release-feature-manifest-v1' &&
+    capabilityFields.every(field => typeof buildManifest[field] === 'boolean') &&
+    typeof buildManifest.apiBaseUrl === 'string'
+  if (!manifestComplete) {
+    issues.push('正式代码包缺少完整可核验的功能开关 manifest，请重新构建。')
+  }
+  if (buildManifest && buildManifest.releaseChannel !== 'production') {
+    issues.push('正式代码包必须使用 production release channel。')
+  }
+  // Missing evidence must never waive a network prerequisite.
+  const needsApi = publicTrialRequired || !manifestComplete || ['cloudFeatures', 'aiFeatures', 'ocr', 'dialectAsr']
+    .some(field => buildManifest[field]) ||
+    (buildManifest.onlinePictograms && Boolean(buildManifest.apiBaseUrl))
+  const needsOnlinePictograms = !manifestComplete || buildManifest.onlinePictograms
   const requireTrue = (field, message) => {
     if (config[field] !== true) issues.push(message)
   }
@@ -58,29 +82,37 @@ export function evaluateReleaseReadiness(config = {}, buildManifest = null) {
     '尚未确认正式 AppID 已授权当前 WechatSI 插件版本。'
   )
 
-  if (!isHttpsPublicUrl(config.apiBaseUrl)) {
-    issues.push('正式 cboard-api 必须使用公众可访问的 HTTPS 域名。')
+  if (needsApi) {
+    if (!isHttpsApiUrl(config.apiBaseUrl)) {
+      issues.push('正式 cboard-api 必须使用公众可访问的 HTTPS 域名。')
+    }
+    if (manifestComplete && (buildManifest.apiBaseUrl !== config.apiBaseUrl ||
+      !isHttpsApiUrl(buildManifest.apiBaseUrl))) {
+      issues.push('联网构建 API endpoint 必须有效且与 readiness 配置一致。')
+    }
+    requireTrue(
+      'apiRequestDomainConfigured',
+      '尚未在公众平台配置 cboard-api request 合法域名。'
+    )
+    requireTrue(
+      'apiUploadDomainConfigured',
+      '尚未在公众平台配置 cboard-api uploadFile 合法域名。'
+    )
+    requireTrue(
+      'apiDownloadDomainConfigured',
+      '尚未在公众平台配置 cboard-api downloadFile 合法域名。'
+    )
   }
-  requireTrue(
-    'apiRequestDomainConfigured',
-    '尚未在公众平台配置 cboard-api request 合法域名。'
-  )
-  requireTrue(
-    'apiUploadDomainConfigured',
-    '尚未在公众平台配置 cboard-api uploadFile 合法域名。'
-  )
-  requireTrue(
-    'apiDownloadDomainConfigured',
-    '尚未在公众平台配置 cboard-api downloadFile 合法域名。'
-  )
-  requireTrue(
-    'arasaacRequestDomainConfigured',
-    '尚未配置 https://api.arasaac.org 为 request 合法域名。'
-  )
-  requireTrue(
-    'arasaacDownloadDomainConfigured',
-    '尚未配置 https://static.arasaac.org 为 downloadFile 合法域名。'
-  )
+  if (needsOnlinePictograms) {
+    requireTrue(
+      'arasaacRequestDomainConfigured',
+      '尚未配置 https://api.arasaac.org 为 request 合法域名。'
+    )
+    requireTrue(
+      'arasaacDownloadDomainConfigured',
+      '尚未配置 https://static.arasaac.org 为 downloadFile 合法域名。'
+    )
+  }
 
   if (!isHttpsPublicUrl(config.sourceCodeUrl)) {
     issues.push('GPLv3 对应源码地址必须是公众可访问的 HTTPS 地址。')
@@ -109,10 +141,12 @@ export function evaluateReleaseReadiness(config = {}, buildManifest = null) {
     'coreRealDeviceAcceptanceConfirmed',
     '尚未完成正式 AppID 下的双向沟通核心真机验收。'
   )
-  requireTrue(
-    'realDeviceAcceptanceConfirmed',
-    '尚未完成正式后端、真实账号和真实网络下的手机验收。'
-  )
+  if (needsApi || needsOnlinePictograms) {
+    requireTrue(
+      'realDeviceAcceptanceConfirmed',
+      '尚未完成正式后端、真实账号和真实网络下的手机验收。'
+    )
+  }
   requireTrue(
     'performanceScanConfirmed',
     '尚未完成微信开发者工具性能扫描和插件体积复核。'
@@ -121,7 +155,6 @@ export function evaluateReleaseReadiness(config = {}, buildManifest = null) {
   if (typeof config.publicTrial !== 'boolean') {
     issues.push('readiness 配置必须明确 publicTrial 为 true 或 false。')
   }
-  const publicTrialRequired = config.publicTrial === true || buildManifest?.publicTrial === true
   if (publicTrialRequired) {
     if (!buildManifest || buildManifest.publicTrial !== true)
       issues.push('public-trial readiness 要求产物启用 public-trial 开关。')
@@ -129,6 +162,8 @@ export function evaluateReleaseReadiness(config = {}, buildManifest = null) {
       issues.push('public-trial 构建必须启用家庭协作开关。')
     if (buildManifest && buildManifest.cloudFeatures !== true)
       issues.push('public-trial 构建必须启用云功能开关。')
+    if (buildManifest && buildManifest.accountClosure !== true)
+      issues.push('public-trial 构建必须启用账号注销确认流程。')
     if (buildManifest && buildManifest.releaseChannel !== 'production')
       issues.push('public-trial 构建必须使用 production release channel。')
     if (buildManifest && buildManifest.apiBaseUrl !== config.apiBaseUrl)
@@ -169,8 +204,8 @@ async function run() {
     JSON.parse(readFileSync(configPath, 'utf8')),
     buildManifest
   )
-  if (hasTrackedChanges(process.cwd())) {
-    result.issues.push('正式代码包对应源码存在未提交的 tracked changes。')
+  if (hasSourceChanges(process.cwd())) {
+    result.issues.push('正式代码包对应源码存在未提交修改或未跟踪文件。')
     result.ready = false
   }
   if (!buildManifest) {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Input, Text, View } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import {
@@ -16,6 +16,7 @@ import {
 import type { BoardDTO } from '@cboard-communication-core/dto'
 
 import { taroPictureLibraryStore } from '../../../../platform/taroPictureLibraryStore'
+import { canEditCareLibrary } from '../../../../platform/taroCareContext'
 import './index.css'
 
 function createPersonalBoardId() {
@@ -49,13 +50,23 @@ export default function BoardManagementPage() {
   const [editingBoardId, setEditingBoardId] = useState('')
   const [editingName, setEditingName] = useState('')
   const [linkingBoardId, setLinkingBoardId] = useState('')
+  const [canEditLibrary, setCanEditLibrary] = useState(canEditCareLibrary)
   const [notice, setNotice] = useState(
     '板块顺序会影响照护者浏览顺序；患者常用优先模式仍按实际使用次数显示。'
   )
 
   useDidShow(() => {
     setBoards(taroPictureLibraryStore.load())
+    setCanEditLibrary(canEditCareLibrary())
   })
+
+  useEffect(() => {
+    const refreshPermission = () => setCanEditLibrary(canEditCareLibrary())
+    Taro.eventCenter.on('care-content-changed', refreshPermission)
+    return () => {
+      Taro.eventCenter.off('care-content-changed', refreshPermission)
+    }
+  }, [])
 
   const persist = (nextBoards: BoardDTO[], message: string) => {
     try {
@@ -226,7 +237,13 @@ export default function BoardManagementPage() {
         </Button>
       </View>
 
-      <View className='board-management-create'>
+      {!canEditLibrary && (
+        <View className='board-management-notice' aria-live='polite'>
+          <Text>此档案当前为只读；板块和共享图卡由有图库编辑权限的家庭成员管理。</Text>
+        </View>
+      )}
+
+      {canEditLibrary && <View className='board-management-create'>
         <View>
           <Text className='board-management-section__title'>
             新建个人板块
@@ -252,7 +269,7 @@ export default function BoardManagementPage() {
             新增板块
           </Button>
         </View>
-      </View>
+      </View>}
 
       <View className='board-management-notice' aria-live='polite'>
         <Text>{notice}</Text>
@@ -264,7 +281,7 @@ export default function BoardManagementPage() {
             当前板块
           </Text>
           <Text className='board-management-section__hint'>
-            共 {boards.length} 个；内置板块可排序和隐藏，但不会在这里误删。
+            共 {boards.length} 个；{canEditLibrary ? '内置板块可排序和隐藏，但不会在这里误删。' : '当前以只读方式查看。'}
           </Text>
         </View>
 
@@ -309,7 +326,7 @@ export default function BoardManagementPage() {
                 </View>
               </View>
 
-              {editing && (
+              {canEditLibrary && editing && (
                 <View className='board-management-rename'>
                   <Input
                     id={`rename-personal-board-input-${board.id}`}
@@ -339,7 +356,7 @@ export default function BoardManagementPage() {
                 </View>
               )}
 
-              <View className='board-management-card__actions'>
+              {canEditLibrary && <View className='board-management-card__actions'>
                 <Button
                   id={`move-board-up-${board.id}`}
                   className='board-management-button'
@@ -392,9 +409,9 @@ export default function BoardManagementPage() {
                     删除
                   </Button>
                 )}
-              </View>
+              </View>}
 
-              {linking && (
+              {canEditLibrary && linking && (
                 <View className='board-management-links'>
                   <Text className='board-management-links__title'>
                     “{board.name}”里的板间跳转
@@ -485,7 +502,7 @@ export default function BoardManagementPage() {
         })}
       </View>
 
-      <View className='board-management-help'>
+      {canEditLibrary && <View className='board-management-help'>
         <Text className='board-management-section__title'>
           板块里已有个人图卡或跳转？
         </Text>
@@ -498,7 +515,7 @@ export default function BoardManagementPage() {
         >
           打开个人图片
         </Button>
-      </View>
+      </View>}
     </View>
   )
 }

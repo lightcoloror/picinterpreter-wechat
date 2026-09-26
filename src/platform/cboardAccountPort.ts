@@ -309,6 +309,12 @@ function asObject(value: unknown): Record<string, unknown> {
     : {}
 }
 
+function isWechatRequestDomainNotAllowed(error: unknown) {
+  const errMsg = asObject(error).errMsg
+  return typeof errMsg === 'string' &&
+    errMsg.toLowerCase().includes('request:fail url not in domain list')
+}
+
 function normalizeReceiverTombstones(
   value: unknown
 ): ConfirmedReceiverTombstone[] {
@@ -640,7 +646,9 @@ export function createCboardAccountPort(
     } catch (error) {
       return {
         ok: false,
-        message: '网络不可用，离线沟通仍可正常使用。'
+        message: isWechatRequestDomainNotAllowed(error)
+          ? '当前版本的云端连接配置尚未完成，请联系管理员；离线沟通仍可使用。'
+          : '网络不可用，离线沟通仍可正常使用。'
       }
     }
   }

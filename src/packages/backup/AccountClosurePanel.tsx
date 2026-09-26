@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import { Button, Input, Text, View } from '@tarojs/components'
 import { accountClosureMessage, type ClosurePreview, type ClosureStatus } from '@cboard-communication-core/accountClosure'
@@ -7,7 +7,10 @@ import { createTaroAccountClosure } from './taroAccountClosure'
 import { taroCboardSessionStore } from '../../platform/taroCboardAccountPort'
 import type { ClosureRecoveryEntry } from '../../platform/accountClosureRecoveryClient'
 
-export default function AccountClosurePanel({ buildArchive }: { buildArchive(): Promise<Uint8Array> }) {
+export default function AccountClosurePanel({ buildArchive, onSessionCleared }: {
+  buildArchive(): Promise<Uint8Array>
+  onSessionCleared(): void
+}) {
   const [client] = useState(() => createTaroAccountClosure(buildArchive))
   const [preview, setPreview] = useState<ClosurePreview | null>(null)
   const [status, setStatus] = useState<ClosureStatus | null>(null)
@@ -19,21 +22,21 @@ export default function AccountClosurePanel({ buildArchive }: { buildArchive(): 
   const running = useRef(false)
   const mounted = useRef(true)
   const owner = taroCboardSessionStore.load()?.user.id
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const local = await client.recoveries()
     if (!mounted.current) return
     setEntries(local)
     const remote = await client.status()
     if (mounted.current) setStatus(remote)
-  }
-  async function run(action: () => Promise<void>) {
+  }, [client])
+  const run = useCallback(async (action: () => Promise<void>) => {
     if (running.current) return
     running.current = true; setBusy(true); setNotice('')
     try { await action() }
     catch (error) { if (mounted.current) setNotice(accountClosureMessage(error)) }
     finally { running.current = false; if (mounted.current) setBusy(false) }
-  }
-  useEffect(() => { void run(refresh); return () => { mounted.current = false } }, [])
+  }, [])
+  useEffect(() => { void run(refresh); return () => { mounted.current = false } }, [refresh, run])
   const confirm = () => run(async () => {
     if (!preview?.canConfirm || confirmation !== 'delete-account' || !owner || preview.owner !== owner) return
     const answer = await Taro.showModal({ title: '确认关闭家庭并注销账号',
@@ -49,7 +52,10 @@ export default function AccountClosurePanel({ buildArchive }: { buildArchive(): 
     if (result.status === 'confirmed' && client.isCurrentAccount(owner)) {
       await Taro.showModal({ title: '注销已受理', showCancel: false,
         content: '云端清理仍在进行。退出后可从本机备份页面查询进度和导出加密恢复文件。' })
-      if (client.isCurrentAccount(owner)) taroCboardSessionStore.clear()
+      if (client.isCurrentAccount(owner)) {
+        taroCboardSessionStore.clear()
+        onSessionCleared()
+      }
     }
   })
   return <View className='library-backup-card'>
@@ -58,7 +64,8 @@ export default function AccountClosurePanel({ buildArchive }: { buildArchive(): 
     {owner && status?.status !== 'confirmed' && <Button disabled={busy} onClick={() => void run(async () => {
       const result = await client.preview()
       if (mounted.current) { setPreview(result); setConfirmation('') }
-    })}>查看注销影响范围</Button>}
+    })}
+    >查看注销影响范围</Button>}
     <Button disabled={busy} onClick={() => void run(refresh)}>查询注销进度</Button>
     {preview && <View>
       <Text>将关闭 {preview.familyIds.length} 个家庭；患者档案 {preview.families.reduce((n, f) => n + f.profileCount, 0)} 个。</Text>
@@ -74,7 +81,8 @@ export default function AccountClosurePanel({ buildArchive }: { buildArchive(): 
       <Text>恢复副本仍在本机。请设置至少12个字符的恢复密码并妥善保存，然后导出加密文件。</Text>
       <Input password aria-label='恢复文件密码' value={password} onInput={e => setPassword(e.detail.value)} />
       {entries.map(entry => <Button key={entry.id} disabled={busy || !validatePrivateArchivePassphrase(password).ok}
-        onClick={() => void run(async () => { await client.downloadRecovery(entry.id, password); if (mounted.current) setNotice('恢复文件已生成，请保存到安全位置。') })}>导出{entry.label}</Button>)}
+        onClick={() => void run(async () => { await client.downloadRecovery(entry.id, password); if (mounted.current) setNotice('恢复文件已生成，请保存到安全位置。') })}
+      >导出{entry.label}</Button>)}
     </View>}
     {!!notice && <Text>{notice}</Text>}
   </View>

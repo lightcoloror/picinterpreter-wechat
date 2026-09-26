@@ -30,6 +30,8 @@ import './CustomPictogramEditor.css'
 
 interface CustomPictogramEditorProps {
   boards: BoardDTO[]
+  canEdit: boolean
+  storageMode: 'device' | 'care-profile'
   onCreate: (value: CustomPersonalPictogramInput) => boolean
   onUpdate: (
     sourceBoardId: string,
@@ -126,6 +128,8 @@ async function removeLocalVideos(videos: string[]) {
 
 export default function CustomPictogramEditor({
   boards,
+  canEdit,
+  storageMode,
   onCreate,
   onUpdate,
   onCopy,
@@ -141,9 +145,7 @@ export default function CustomPictogramEditor({
   const [copyTargetBoardId, setCopyTargetBoardId] = useState('')
   const [editingEntry, setEditingEntry] =
     useState<CustomPersonalPictogramEntry | null>(null)
-  const [notice, setNotice] = useState(
-    '新图卡默认只保存在当前微信设备；只有明确同意时才会单次上传以生成建议。'
-  )
+  const [notice, setNotice] = useState('')
   const draftImageRegistryRef = useRef(createDraftImageRegistry())
   const draftSoundRegistryRef = useRef(createDraftSoundRegistry())
   const draftVideoRegistryRef = useRef(createDraftVideoRegistry())
@@ -685,23 +687,29 @@ export default function CustomPictogramEditor({
     <View className='custom-pictogram-editor'>
       <View className='custom-pictogram-editor__heading'>
         <Text className='custom-pictogram-editor__eyebrow'>
-          {editingEntry ? '编辑' : '新增'}
+          {canEdit ? (editingEntry ? '编辑' : '新增') : '查看'}
         </Text>
         <View>
           <Text className='custom-pictogram-editor__title'>
-            {editingEntry ? '修改个人图卡' : '创建个人图卡'}
+            {canEdit ? (editingEntry ? '修改个人图卡' : '创建个人图卡') : '个人图卡'}
           </Text>
           <Text className='custom-pictogram-editor__hint'>
-            {editingEntry
+            {!canEdit
+              ? '只读浏览已保存图卡；使用和表达不受影响'
+              : editingEntry
               ? '保存后立即更新浏览、搜索、匹配和朗读'
               : '手工确认后才写入 CBoard；视觉结果只是可编辑建议'}
           </Text>
         </View>
       </View>
 
-      <Text className='custom-pictogram-editor__notice'>{notice}</Text>
+      <Text className='custom-pictogram-editor__notice'>
+        {notice || (storageMode === 'care-profile'
+          ? '图卡图片与文字会同步到当前家庭档案；短视频和录音目前不参与云同步。'
+          : '新图卡只保存在当前微信设备；只有明确同意时才会单次上传以生成建议。')}
+      </Text>
 
-      {!editingEntry && (
+      {canEdit && !editingEntry && (
         <View className='custom-pictogram-editor__photo-actions'>
         <Button
           className='custom-pictogram-button custom-pictogram-button--primary'
@@ -728,7 +736,7 @@ export default function CustomPictogramEditor({
         </View>
       )}
 
-      {draft.image && (
+      {canEdit && draft.image && (
         <View className='custom-pictogram-editor__workspace'>
           <View className='custom-pictogram-editor__media'>
             <PictogramImage
@@ -926,7 +934,7 @@ export default function CustomPictogramEditor({
           <Text className='custom-pictogram-editor__saved-title'>
             已新增个人图卡（{customEntries.length}）
           </Text>
-          <Picker
+          {canEdit && <Picker
             mode='selector'
             range={boardNames}
             value={copyTargetBoardIndex}
@@ -943,9 +951,11 @@ export default function CustomPictogramEditor({
               复制目标板块：
               {copyTargetBoard ? copyTargetBoard.name : '请选择'}
             </View>
-          </Picker>
+          </Picker>}
           <Text className='custom-pictogram-editor__copy-hint'>
-            复制会沿用 CBoard 的“新 Tile、同一媒体”语义；两块板都可使用，删除其中一份不会误删另一份的图片、短视频或录音。
+            {storageMode === 'care-profile'
+              ? '家庭档案中的图卡图片作为私有媒体同步；短视频和录音目前不参与云同步。'
+              : '复制会沿用 CBoard 的“新 Tile、同一媒体”语义；两块板都可使用，删除其中一份不会误删另一份的图片、短视频或录音。'}
           </Text>
           <View className='custom-pictogram-editor__saved-list'>
             {customEntries.map(entry => {
@@ -979,12 +989,12 @@ export default function CustomPictogramEditor({
                     {entry.tile.label}
                   </Text>
                   <Text className='custom-pictogram-card__board'>
-                    {entry.boardName} · 仅本机
+                    {entry.boardName} · {storageMode === 'care-profile' ? '家庭档案' : '仅本机'}
                     {entry.tile.mediaType === 'video' ? ' · 短视频' : ''}
                     {entry.tile.sound ? ' · 已录音' : ''}
                   </Text>
                 </View>
-                <View className='custom-pictogram-card__actions'>
+                {canEdit && <View className='custom-pictogram-card__actions'>
                   <Button
                     id={`custom-pictogram-move-earlier-${entry.tile.id}`}
                     className='custom-pictogram-button'
@@ -1042,7 +1052,7 @@ export default function CustomPictogramEditor({
                   >
                     {busyAction === entry.tile.id ? '删除中…' : '删除'}
                   </Button>
-                </View>
+                </View>}
               </View>
               )
             })}

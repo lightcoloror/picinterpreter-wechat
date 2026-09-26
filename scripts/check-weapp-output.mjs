@@ -7,7 +7,7 @@ import {
   hasRuntimePluginUsage
 } from './weapp-output-quality.mjs'
 
-const outputRoot = path.resolve('dist')
+const outputRoot = path.resolve(process.env.TARO_APP_OUTPUT_ROOT || 'dist')
 const unsupportedSyntax = [
   { token: '?.', name: 'optional chaining' },
   { token: '??', name: 'nullish coalescing' }
@@ -141,6 +141,12 @@ const outputStats = await Promise.all(
 )
 const subpackageRoots = (appConfig.subPackages || []).map(entry =>
   String(entry.root || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+)
+const backupPackageConfig = (appConfig.subPackages || []).find(
+  entry => entry.root === 'packages/backup'
+)
+const publicBoardRouteEnabled = Boolean(
+  backupPackageConfig?.pages?.includes('pages/public-boards/index')
 )
 const emergencySubpackageRoot = 'packages/emergency'
 if (!subpackageRoots.includes(emergencySubpackageRoot)) {
@@ -388,13 +394,36 @@ const backupJavaScript = (
 const requiredBackupEndpoints = [
   '/gpt/communication/pictogram-metadata',
   '/gpt/communication/background-removal',
-  '/board/public',
-  'cboard-public-board-bundle',
   '/communication/private-library',
   '/communication/private-library/download',
   '/communication/private-device-data',
   '/communication/private-device-data/download'
 ]
+const publicBoardEndpoints = [
+  '/board/public',
+  'cboard-public-board-bundle'
+]
+if (publicBoardRouteEnabled) {
+  requiredBackupEndpoints.push(...publicBoardEndpoints)
+} else {
+  for (const endpoint of publicBoardEndpoints) {
+    if (backupJavaScript.includes(endpoint)) {
+      failures.push(
+        'Local-only production must not package public-board endpoint ' +
+          endpoint
+      )
+    }
+  }
+  if (
+    relativeOutputPaths.some(relativePath =>
+      relativePath.startsWith('packages/backup/pages/public-boards/')
+    )
+  ) {
+    failures.push(
+      'Local-only production must not package the public-board page'
+    )
+  }
+}
 for (const endpoint of requiredBackupEndpoints) {
   if (!backupJavaScript.includes(endpoint)) {
     failures.push(

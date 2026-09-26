@@ -547,6 +547,39 @@ describe('cboardAccountPort', () => {
     expect(harness.request).not.toHaveBeenCalled()
   })
 
+  test('explains a WeChat request domain-list failure without exposing its raw error', async () => {
+    const harness = createHarness()
+    harness.request.mockRejectedValueOnce({
+      errMsg: 'request:fail url not in domain list'
+    })
+
+    const result = await harness.port.login({
+      email: 'care@example.test',
+      password: '123456'
+    })
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      message: '当前版本的云端连接配置尚未完成，请联系管理员；离线沟通仍可使用。'
+    }))
+    expect(result.message).not.toContain('domain list')
+  })
+
+  test('keeps the generic offline message for ordinary network failures', async () => {
+    const harness = createHarness()
+    harness.request.mockRejectedValueOnce({ errMsg: 'request:fail timeout' })
+
+    const result = await harness.port.login({
+      email: 'care@example.test',
+      password: '123456'
+    })
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      message: '网络不可用，离线沟通仍可正常使用。'
+    }))
+  })
+
   test('does not treat a response without authToken as a logged-in session', async () => {
     const harness = createHarness()
     harness.request.mockResolvedValueOnce({

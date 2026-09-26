@@ -38,6 +38,9 @@ import './PersonalImageManager.css'
 interface PersonalImageManagerProps {
   boards: BoardDTO[]
   preferences: PersonalImagePreference[]
+  canEditPreferences: boolean
+  canEditLibrary: boolean
+  storageMode: 'device' | 'care-profile'
   onSave: (entry: {
     tileId: string
     boardId: string
@@ -68,6 +71,9 @@ function preferenceKey(tileId: string, boardId: string) {
 export default function PersonalImageManager({
   boards,
   preferences,
+  canEditPreferences,
+  canEditLibrary,
+  storageMode,
   onSave,
   onRemove,
   onCuratePublic,
@@ -82,9 +88,9 @@ export default function PersonalImageManager({
     DEFAULT_DEVICE_PRIVATE_PICTOGRAM_LICENSE
   )
   const [targetBoardId, setTargetBoardId] = useState('')
-  const [notice, setNotice] = useState(
-    '照片只保存在当前微信设备，不会进入账号同步或公开图板。'
-  )
+  const [notice, setNotice] = useState(() => storageMode === 'care-profile'
+    ? '熟悉图片设置和关联图片会同步到当前家庭档案，并作为私有媒体保存；仅有偏好编辑权限的成员可修改。'
+    : '照片只保存在当前微信设备，不会进入账号同步或公开图板。')
   const catalog = useMemo(
     () => buildCommunicationTileCatalog(boards),
     [boards]
@@ -212,6 +218,10 @@ export default function PersonalImageManager({
   }
 
   const saveAttribution = () => {
+    if (!canEditPreferences) {
+      setNotice('当前档案为只读，不能修改熟悉图片偏好。')
+      return
+    }
     if (!selectedCandidate || !selectedPreference) return
 
     const saved = onSave({
@@ -230,12 +240,16 @@ export default function PersonalImageManager({
     })
     setNotice(
       saved
-        ? `已保存「${candidateLabel(selectedCandidate)}」的本机图片说明。`
+        ? `已保存「${candidateLabel(selectedCandidate)}」的图片说明。`
         : '图片说明保存失败，请稍后重试。'
     )
   }
 
   const chooseImage = async (candidate: CommunicationCatalogItem) => {
+    if (!canEditPreferences) {
+      setNotice('当前档案为只读，不能更改熟悉图片。')
+      return
+    }
     const key = preferenceKey(candidate.tile.id, candidate.boardId)
     const previous = preferenceByKey.get(key)
     setBusyKey(key)
@@ -270,7 +284,9 @@ export default function PersonalImageManager({
     if (previous && previous.image !== result.image) {
       await taroPersonalImagePort.remove(previous.image)
     }
-    setNotice(`已为「${candidateLabel(candidate)}」启用当前设备的熟悉图片。`)
+    setNotice(storageMode === 'care-profile'
+      ? `已为「${candidateLabel(candidate)}」设置家庭档案熟悉图片。`
+      : `已为「${candidateLabel(candidate)}」启用当前设备的熟悉图片。`)
     setBusyKey('')
   }
 
@@ -278,6 +294,10 @@ export default function PersonalImageManager({
     preference: PersonalImagePreference,
     candidate: CommunicationCatalogItem
   ) => {
+    if (!canEditPreferences) {
+      setNotice('当前档案为只读，不能更改熟悉图片。')
+      return
+    }
     const key = preferenceKey(preference.tileId, preference.boardId)
     setBusyKey(key)
     const removed = onRemove(preference.tileId, preference.boardId)
@@ -295,6 +315,10 @@ export default function PersonalImageManager({
   const curatePublicPictogram = (
     candidate: CommunicationCatalogItem
   ) => {
+    if (!canEditLibrary) {
+      setNotice('当前档案为只读，不能把图卡加入患者图库。')
+      return
+    }
     if (!targetBoard) {
       setNotice('请先新建个人板块，再收纳公开图卡。')
       return
@@ -315,6 +339,10 @@ export default function PersonalImageManager({
     tileId: string,
     label: string
   ) => {
+    if (!canEditLibrary) {
+      setNotice('当前档案为只读，不能修改患者图库。')
+      return
+    }
     const removed = onRemoveCuratedPublic(boardId, tileId)
     setNotice(
       removed
@@ -365,7 +393,9 @@ export default function PersonalImageManager({
           </Text>
           {activePreference && (
             <>
-              <Text className='personal-image-card__private'>仅本机私图</Text>
+              <Text className='personal-image-card__private'>
+                {storageMode === 'care-profile' ? '家庭私图' : '仅本机私图'}
+              </Text>
               <Text className='personal-image-card__license'>
                 {(activePreference.pictogramAttribution &&
                   activePreference.pictogramAttribution.license) ||
@@ -375,14 +405,14 @@ export default function PersonalImageManager({
           )}
         </View>
         <View className='personal-image-card__actions'>
-          <Button
+          {canEditPreferences && <Button
             className='personal-image-action personal-image-action--primary'
             disabled={busy}
             onClick={() => chooseImage(candidate)}
           >
             {busy ? '处理中…' : activePreference ? '更换照片' : '选择照片'}
-          </Button>
-          {activePreference && (
+          </Button>}
+          {canEditPreferences && activePreference && (
             <Button
               className='personal-image-action'
               disabled={busy}
@@ -393,7 +423,7 @@ export default function PersonalImageManager({
               编辑说明
             </Button>
           )}
-          {activePreference && (
+          {canEditPreferences && activePreference && (
             <Button
               className='personal-image-action personal-image-action--restore'
               disabled={busy}
@@ -402,7 +432,7 @@ export default function PersonalImageManager({
               恢复默认
             </Button>
           )}
-          {canCurate && (
+          {canEditLibrary && canCurate && (
             <Button
               className='personal-image-action personal-image-action--curate'
               disabled={!targetBoard}
@@ -432,13 +462,13 @@ export default function PersonalImageManager({
 
       <Text className='personal-image-manager__privacy'>{notice}</Text>
 
-      {selectedCandidate && selectedPreference && (
+      {canEditPreferences && selectedCandidate && selectedPreference && (
         <View className='personal-image-attribution-editor'>
           <Text className='personal-image-attribution-editor__title'>
             「{candidateLabel(selectedCandidate)}」图片说明
           </Text>
           <Text className='personal-image-attribution-editor__hint'>
-            仅作为当前设备的来源备注，不代表平台核验了公开授权。
+            来源说明随当前设置保存，不代表平台核验了公开授权。
           </Text>
           <Input
             className='personal-image-attribution-editor__input'
@@ -493,9 +523,9 @@ export default function PersonalImageManager({
           公开图卡收纳
         </Text>
         <Text className='personal-image-section__hint'>
-          只把带公开来源说明的内容图卡复制到本机个人板；不会复制导航卡、家庭私图或图卡录音。
+          只把带公开来源说明的内容图卡收纳到患者个人板；不会复制导航卡或家庭私图。{storageMode === 'care-profile' ? '收纳结果同步到当前家庭档案。' : '收纳结果只保存在本机。'}
         </Text>
-        {personalBoards.length ? (
+        {canEditLibrary && personalBoards.length ? (
           <Picker
             mode='selector'
             range={personalBoards.map(board => board.name)}
@@ -513,18 +543,18 @@ export default function PersonalImageManager({
               收纳到：{targetBoard ? targetBoard.name : '请选择个人板'}
             </View>
           </Picker>
-        ) : (
+        ) : canEditLibrary ? (
           <View className='personal-image-curation__empty'>
             <Text>还没有个人板块。请先新建，避免修改 CBoard 内置板。</Text>
           </View>
-        )}
-        <Button
+        ) : null}
+        {canEditLibrary && <Button
           id='open-board-manager-for-curation-button'
           className='personal-image-action personal-image-action--primary'
           onClick={onOpenBoardManager}
         >
           打开板块管理
-        </Button>
+        </Button>}
 
         {curatedEntries.length > 0 && (
           <View className='personal-image-curation__saved'>
@@ -556,7 +586,7 @@ export default function PersonalImageManager({
                       {entry.tile.pictogramAttribution?.license}
                     </Text>
                   </View>
-                  <View className='personal-image-card__actions'>
+                  {canEditLibrary && <View className='personal-image-card__actions'>
                     <Button
                       className='personal-image-action personal-image-action--danger'
                       onClick={() =>
@@ -569,7 +599,7 @@ export default function PersonalImageManager({
                     >
                       从个人板移除
                     </Button>
-                  </View>
+                  </View>}
                 </View>
               ))}
             </View>
@@ -590,7 +620,7 @@ export default function PersonalImageManager({
           onInput={event => setQuery(event.detail.value)}
         />
         <Text className='personal-image-section__hint'>
-          仅供家属维护图片库。当前显示前 {candidates.length} 个结果；可更换熟悉照片，也可把有公开来源说明的图卡加入上方个人板。
+          可浏览和搜索图卡。{canEditPreferences ? '有偏好编辑权限时可为当前患者设置熟悉照片。' : '当前档案只读，熟悉照片设置不可修改。'}{canEditLibrary ? '有图库编辑权限时可把有公开来源说明的图卡收纳到个人板。' : '当前档案只读，不能更改患者个人板。'} 当前显示前 {candidates.length} 个结果。
         </Text>
         <View className='personal-image-list'>
           {candidates.length ? (

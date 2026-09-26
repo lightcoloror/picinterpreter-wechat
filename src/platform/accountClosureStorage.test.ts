@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { createAccountClosureFileStorage } from './accountClosureStorage'
 import { createAccountClosureRecovery } from '@cboard-communication-core/accountClosureRecovery'
+import { createAccountClosureFileStorage } from './accountClosureStorage'
 
 function harness() {
   const disk = new Map<string, string>()

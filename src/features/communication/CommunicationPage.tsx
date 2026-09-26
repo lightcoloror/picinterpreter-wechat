@@ -1,4 +1,5 @@
 import { useReducer, useRef, useState } from 'react'
+import { isCareSharedPhrase } from '@cboard-communication-core/careSharedPhrases'
 import { Button, Text, View } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import {
@@ -35,8 +36,8 @@ import type {
   PictogramOrderingState
 } from '@cboard-communication-core/pictogramOrdering'
 import type { CboardAccountSession } from '../../platform/cboardAccountPort'
+import { canEditCareLibrary } from '../../platform/taroCareContext'
 import { useCareRefresh, loadCareSharedPhrases } from '../../platform/taroCareWorkspace'
-import { isCareSharedPhrase } from '@cboard-communication-core/careSharedPhrases'
 import { taroCboardSessionStore } from '../../platform/taroCboardAccountPort'
 import { taroCommunicationNavigationIntent } from '../../platform/taroCommunicationNavigationIntent'
 import { taroCommunicationPreferencesStore } from '../../platform/taroCommunicationPreferencesStore'
@@ -149,6 +150,7 @@ export default function CommunicationPage() {
   const expressionSessionRef = useRef(expressionSession)
   expressionSessionRef.current = expressionSession
   const [showCaregiverTools, setShowCaregiverTools] = useState(false)
+  const [canEditLibrary, setCanEditLibrary] = useState(canEditCareLibrary)
   const [showOnboarding, setShowOnboarding] = useState(
     !initialPreferencesRef.current.onboardingComplete
   )
@@ -259,6 +261,7 @@ export default function CommunicationPage() {
   }
 
   const refreshCareWorkspace = () => {
+    setCanEditLibrary(canEditCareLibrary())
     const nextConversation =
       repositoryRef.current.getActiveConversationSession()
     setConversationSession(current => {
@@ -532,21 +535,23 @@ export default function CommunicationPage() {
             >
               全部历史
             </Button>
-            <Button
-              id='board-manager-button'
-              className='utility-action'
-              onClick={() => {
-                void Taro.navigateTo({
-                  url: '/packages/backup/pages/boards/index'
-                }).catch(() => {
-                  setConversationNotice(
-                    '暂时无法打开板块管理，请重试。'
-                  )
-                })
-              }}
-            >
-              板块管理
-            </Button>
+            {canEditLibrary && (
+              <Button
+                id='board-manager-button'
+                className='utility-action'
+                onClick={() => {
+                  void Taro.navigateTo({
+                    url: '/packages/backup/pages/boards/index'
+                  }).catch(() => {
+                    setConversationNotice(
+                      '暂时无法打开板块管理，请重试。'
+                    )
+                  })
+                }}
+              >
+                板块管理
+              </Button>
+            )}
             <Button
               id='communication-settings-button'
               className='utility-action'

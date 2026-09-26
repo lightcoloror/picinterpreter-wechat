@@ -4,17 +4,72 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  statSync,
   writeFileSync
 } from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import {
+  buildArtifactFingerprint,
+  readBuiltFeatureManifest
+} from './build-feature-manifest.mjs'
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..'
 )
+
+export const RELEASE_CAPABILITY_KEYS = [
+  'releaseChannel', 'cloudFeatures', 'aiFeatures', 'ocr',
+  'onlinePictograms', 'dialectAsr', 'careCollaboration',
+  'accountClosure', 'publicTrial'
+]
+
+export function inspectBuiltFeatureManifest(distRoot, sourceRevision) {
+  const manifest = readBuiltFeatureManifest(distRoot)
+  const reasons = []
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return {
+      complete: false,
+      valid: false,
+      capabilities: null,
+      reasons: ['Built feature manifest is missing or invalid JSON.']
+    }
+  }
+  const complete = manifest.schema === 1 &&
+    manifest.marker === 'cboard-release-feature-manifest-v1' &&
+    ['development', 'preview', 'production'].includes(manifest.releaseChannel) &&
+    RELEASE_CAPABILITY_KEYS.slice(1).every(key => typeof manifest[key] === 'boolean')
+  if (!complete) reasons.push('Built feature manifest is incomplete or has an unsupported schema.')
+  const fingerprint = buildArtifactFingerprint(distRoot)
+  if (typeof manifest.artifactFingerprint !== 'string' || manifest.artifactFingerprint !== fingerprint) {
+    reasons.push('Built feature manifest artifact fingerprint does not match the dist contents.')
+  }
+  if (!sourceRevision || manifest.sourceRevision !== sourceRevision) {
+    reasons.push('Built feature manifest source revision does not match the current source revision.')
+  }
+  const capabilities = complete
+    ? Object.fromEntries(RELEASE_CAPABILITY_KEYS.map(key => [key, manifest[key]]))
+    : null
+  return {
+    complete,
+    valid: complete && reasons.length === 0,
+    capabilities,
+    reasons,
+    schema: manifest.schema,
+    marker: manifest.marker,
+    sourceRevision: manifest.sourceRevision,
+    artifactFingerprint: manifest.artifactFingerprint
+  }
+}
+
+export function assertCleanWorkingTree(statusOutput, requireClean) {
+  if (requireClean && statusOutput) {
+    throw new Error(
+      'Tracked or untracked source changes are present. Refusing formal release evidence.'
+    )
+  }
+}
 
 function sha256(contents) {
   return createHash('sha256').update(contents).digest('hex')
@@ -126,29 +181,25 @@ function sanitizeRemote(remote) {
   }
 }
 
-function run() {
-  const trackedChanges = runGit([
-    'status',
-    '--porcelain',
-    '--untracked-files=no'
-  ])
-  if (trackedChanges && process.argv.includes('--require-clean')) {
-    throw new Error(
-      'Tracked source changes are not committed. Refusing formal release evidence.'
-    )
-  }
+export function run(args = process.argv.slice(2)) {
+  const trackedStatus = runGit(['status', '--porcelain', '--untracked-files=no'])
+  // Directory-level untracked entries are sufficient to reject a dirty tree;
+  // expanding every cached build asset can overflow child_process buffers.
+  const fullStatus = runGit(['status', '--porcelain', '--untracked-files=normal'])
+  assertCleanWorkingTree(fullStatus, args.includes('--require-clean'))
 
-  const distRoot = path.join(projectRoot, 'dist')
+  const distArgumentIndex = args.indexOf('--dist')
+  const distRoot = distArgumentIndex >= 0
+    ? path.resolve(projectRoot, args[distArgumentIndex + 1] || '')
+    : path.join(projectRoot, 'dist')
   const inventory = buildArtifactInventory(distRoot)
   const commit = runGit(['rev-parse', 'HEAD'])
+  const featureManifest = inspectBuiltFeatureManifest(distRoot, commit)
+  if (args.includes('--require-clean') && !featureManifest.valid) {
+    throw new Error(`Formal release evidence requires a complete valid built feature manifest: ${featureManifest.reasons.join(' ')}`)
+  }
   const shortCommit = commit.slice(0, 12)
   const generatedAt = new Date().toISOString()
-  const productionEnvironmentPath = path.join(projectRoot, '.env.production')
-  const productionSettings = existsSync(productionEnvironmentPath)
-    ? parseSafeProductionSettings(
-        readFileSync(productionEnvironmentPath, 'utf8')
-      )
-    : {}
   const evidence = {
     version: 1,
     generatedAt,
@@ -159,9 +210,14 @@ function run() {
     source: {
       commit,
       remote: sanitizeRemote(runGit(['remote', 'get-url', 'origin'])),
-      trackedChangesPresent: Boolean(trackedChanges)
+      trackedChangesPresent: Boolean(trackedStatus),
+      untrackedChangesPresent: Boolean(fullStatus && fullStatus !== trackedStatus)
     },
-    productionSettings,
+    featureManifest,
+    formalEvidenceEligible: featureManifest.valid && !fullStatus,
+    formalEvidenceLimitations: featureManifest.valid
+      ? (fullStatus ? ['Source working tree has tracked or untracked changes.'] : [])
+      : featureManifest.reasons,
     artifact: inventory,
     effectiveScope: '当前 dist 微信小程序代码包；不代表微信审核、备案、许可或真机验收通过。'
   }

@@ -126,6 +126,19 @@ describe('publicBoardPublicationPort', () => {
     ).rejects.toThrow('安全地址')
   })
 
+  test('explains trial legacy upload refusal without creating a board', async () => {
+    const harness = createHarness()
+    harness.uploadFile.mockResolvedValueOnce({
+      statusCode: 403,
+      data: JSON.stringify({ code: 'LEGACY_MEDIA_UPLOAD_DISABLED' })
+    })
+    await expect(
+      harness.port.uploadMedia('wxfile://image.png', 'image')
+    ).rejects.toThrow('患者档案图库')
+    expect(harness.request).not.toHaveBeenCalled()
+    expect(harness.uploadFile).toHaveBeenCalledTimes(1)
+  })
+
   test('paginates the authenticated owner board list', async () => {
     const harness = createHarness()
     harness.request

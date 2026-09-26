@@ -21,6 +21,9 @@ vi.mock('./taroSpeechPort', () => ({ wechatSpeechPort: {} }))
 vi.mock('../config/runtimeCapabilities', () => ({ apiBaseUrlFor: () => h.apiBase }))
 
 const profile = { id: 'patient', familyId: 'family' }
+test('AI funding follows the configured AI capability, independent of care access', () => {
+  expect(runtime.fundingEnabled).toBe(false)
+})
 afterEach(() => {
   vi.restoreAllMocks()
   h.save.mockClear()

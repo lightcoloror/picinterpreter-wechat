@@ -16,9 +16,24 @@ describe('public board publication placement', () => {
 
     expect(personalImagesPage).toContain('PublicBoardPublisher')
     expect(personalImagesPage).toContain(
-      '<PublicBoardPublisher boards={libraryBoards} />'
+      'runtimeCapabilities.cloudFeatures &&'
+    )
+    expect(personalImagesPage).toContain(
+      'canEditLibrary && scopeIsLoaded && <PublicBoardPublisher boards={visibleLibraryBoards} />'
     )
     expect(patientWorkspace).not.toContain('PublicBoardPublisher')
+  })
+
+  test('excludes the public-board route from the local-only production build', () => {
+    const appConfig = readSource('../../app.config.ts')
+
+    expect(appConfig).toContain(
+      "process.env.TARO_APP_RELEASE_CHANNEL === 'production'"
+    )
+    expect(appConfig).toContain(
+      "process.env.TARO_APP_ENABLE_CLOUD_FEATURES !== 'true'"
+    )
+    expect(appConfig).toContain("['pages/public-boards/index']")
   })
 
   test('requires two explicit consents and a final modal', () => {

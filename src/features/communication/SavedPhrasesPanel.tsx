@@ -1,8 +1,8 @@
 import { Button, ScrollView, Text, View } from '@tarojs/components'
 import type { CommunicationSavedPhraseEntry } from '@cboard-communication-core/repository'
+import { isCareSharedPhrase } from '@cboard-communication-core/careSharedPhrases'
 
 import PictogramImage from '../../components/PictogramImage'
-import { isCareSharedPhrase } from '@cboard-communication-core/careSharedPhrases'
 
 interface SavedPhrasesPanelProps {
   items: CommunicationSavedPhraseEntry[]

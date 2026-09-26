@@ -61,3 +61,16 @@ declare module '@cboard-communication-core/careFavoriteChanges' {
   export function sameCareFavoriteContent(left: object, right: object): boolean
   export function sameCareFavoriteList(left: object[], right: object[]): boolean
 }
+declare module '@cboard-communication-core/productLinks' {
+  export function getProductLinks(env: Record<string, string | undefined>, parseUrl?: (value: string) => any): { support: string | null }
+}
+declare module 'url-parse' {
+  export default class UrlParse {
+    constructor(value: string, base?: string)
+    protocol: string
+    hostname: string
+    username: string
+    password: string
+    href: string
+  }
+}

@@ -1,14 +1,12 @@
 import Taro from '@tarojs/taro'
 
-import { runtimeCapabilities } from '../config/runtimeCapabilities'
+import { apiBaseUrlFor, runtimeCapabilities } from '../config/runtimeCapabilities'
 
 import { createArasaacPictogramSearchPort } from './arasaacPictogramSearchPort'
 import { createFallbackPictogramSearchPort } from './fallbackPictogramSearchPort'
 import { createPictogramSearchPort } from './pictogramSearchPort'
 
-const apiBaseUrl = runtimeCapabilities.onlinePictograms
-  ? runtimeCapabilities.apiBaseUrl
-  : ''
+const apiBaseUrl = apiBaseUrlFor('onlinePictograms')
 const request = (options: Parameters<typeof Taro.request>[0]) =>
   Taro.request(options)
 const downloadFile = (options: Parameters<typeof Taro.downloadFile>[0]) =>

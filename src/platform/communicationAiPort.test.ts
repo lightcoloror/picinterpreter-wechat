@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { createCommunicationAiPort } from './communicationAiPort'
 import { buildCommunicationAiSentenceRequest } from '@cboard-communication-core/communicationAi'
+import { createCommunicationAiPort } from './communicationAiPort'
 
 function createHarness(options: { apiBaseUrl?: string; token?: string } = {}) {
   const request = vi.fn(async ({ url }: { url: string }) => {

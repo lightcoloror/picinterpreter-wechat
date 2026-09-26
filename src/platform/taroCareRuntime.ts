@@ -27,6 +27,7 @@ export const runtime = {
   resolveBuiltinImage: careBuiltinImages.resolve,
   enabled: process.env.TARO_APP_CARE_COLLABORATION === 'true',
   trialEnabled: process.env.TARO_APP_CARE_PUBLIC_TRIAL === 'true',
+  fundingEnabled: Boolean(apiBaseUrlFor('aiFeatures')),
   identity,
   openAccount: () => Taro.redirectTo({ url: '/packages/management/pages/index/index' }),
   randomBytes: async (length: number) => new Uint8Array((await Taro.getRandomValues({ length })).randomValues),

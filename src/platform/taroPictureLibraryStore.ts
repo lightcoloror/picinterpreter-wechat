@@ -7,7 +7,13 @@ import type { PictogramLibraryDTO } from '@cboard-communication-core/pictogramLi
 import { DEFAULT_BOARD_FIXTURES } from '../fixtures/defaultBoard'
 import { createPictureLibraryStore } from './pictureLibraryStore'
 import { createRotatingPictureLibraryFileStorage } from './rotatingPictureLibraryFileStorage'
-import { careScopedKey, currentCareContext, markCareLocalChange } from './taroCareContext'
+import {
+  canEditCareLibrary,
+  careScopedKey,
+  currentCareContext,
+  isCareHydrating,
+  markCareLocalChange
+} from './taroCareContext'
 
 const storage = {
   getStorageSync: (key: string) => Taro.getStorageSync(key),
@@ -48,6 +54,9 @@ export const taroPictureLibraryStore = {
     return currentStore().load()
   },
   save(value: BoardDTO[] | PictogramLibraryDTO) {
+    if (!isCareHydrating() && !canEditCareLibrary()) {
+      throw new Error('当前档案未授予图库编辑权限')
+    }
     const saved = currentStore().save(value)
     markCareLocalChange('boards', saved)
     return saved

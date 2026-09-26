@@ -10,7 +10,7 @@
   "apiDownloadDomainConfigured": false,
   "arasaacRequestDomainConfigured": false,
   "arasaacDownloadDomainConfigured": false,
-  "sourceCodeUrl": "",
+  "sourceCodeUrl": "https://github.com/lightcoloror/picinterpreter-wechat",
   "sourceCodePubliclyAccessibleConfirmed": false,
   "bundledSymbolLicensesReviewed": false,
   "cboardSymbolsResolved": false,
@@ -18,5 +18,6 @@
   "arasaacCommercialUseResolved": false,
   "coreRealDeviceAcceptanceConfirmed": false,
   "realDeviceAcceptanceConfirmed": false,
-  "performanceScanConfirmed": false
+  "performanceScanConfirmed": false,
+  "publicTrial": false
 }

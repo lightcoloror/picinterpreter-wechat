@@ -18,6 +18,7 @@ import {
   decryptPrivateArchiveData,
   encryptPrivateArchiveData,
 } from "../../src/platform/taroPrivateArchiveEncryption";
+import { resolvePrivateArchiveCloudE2EConfig } from "./privateArchiveCloudE2EConfig";
 
 vi.mock("@tarojs/taro", () => ({
   default: {
@@ -26,13 +27,10 @@ vi.mock("@tarojs/taro", () => ({
 }));
 
 const RUN_CLOUD_INTEROP = process.env.PRIVATE_ARCHIVE_CLOUD_E2E === "1";
-const API_BASE_URL = String(
-  process.env.PRIVATE_ARCHIVE_CLOUD_API_URL || "http://127.0.0.1:19011",
-).replace(/\/+$/, "");
-const EMAIL =
-  process.env.LOCAL_RUNTIME_USER_EMAIL || "local.runtime@example.com";
-const PASSWORD =
-  process.env.LOCAL_RUNTIME_USER_PASSWORD || "ChangeMe123!";
+const CLOUD_E2E_CONFIG = RUN_CLOUD_INTEROP
+  ? resolvePrivateArchiveCloudE2EConfig(process.env)
+  : undefined;
+const API_BASE_URL = CLOUD_E2E_CONFIG?.apiBaseUrl;
 const PASSPHRASE = "correct-horse-battery-staple";
 
 function createDeterministicRandomBytes(seed: number) {
@@ -63,7 +61,7 @@ function createFetchDependencies(
   authToken: string,
 ): PrivatePictureLibraryCloudDependencies {
   return {
-    apiBaseUrl: API_BASE_URL,
+    apiBaseUrl: API_BASE_URL!,
     getAuthToken: () => authToken,
     async request(options) {
       const response = await fetch(options.url, {
@@ -108,7 +106,10 @@ async function login() {
   const response = await fetch(`${API_BASE_URL}/user/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    body: JSON.stringify({
+      email: CLOUD_E2E_CONFIG!.email,
+      password: CLOUD_E2E_CONFIG!.password,
+    }),
   });
   const data = (await parseResponseData(response)) as {
     authToken?: string;

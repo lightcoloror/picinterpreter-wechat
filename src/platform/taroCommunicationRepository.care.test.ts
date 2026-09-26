@@ -65,3 +65,36 @@ test('nested cloud projection does not become a user edit when repository initia
   expect(packet.items).toEqual([])
   expect(packet.base[0].id).toBe('shared')
 })
+
+test.each([undefined, [], ['read']])('readonly or unknown care grants reject personal image preferences before local persistence (%s)', permissions => {
+  h.values.set('care-selection-v1:account', { id: 'patient', familyId: 'family', permissions })
+  const repository = createTaroCommunicationRepository()
+  const key = careScopedKey('cboard_communication_personal_image_preferences')
+  const originalValue = h.values.get(key)
+  expect(() => repository.savePersonalImagePreference({
+    tileId: 'tile', boardId: 'board', labelSnapshot: '熟悉物品', image: '/tmp/image.jpg'
+  } as any)).toThrow('当前档案未授予熟悉图片偏好编辑权限')
+  expect(h.values.get(key)).toBe(originalValue)
+  expect(h.values.has(careScopedKey('care-pending-personalImagePreferences'))).toBe(false)
+})
+
+test('preferences.edit allows personal image preference persistence and pending sync', () => {
+  h.values.set('care-selection-v1:account', {
+    id: 'patient', familyId: 'family', permissions: ['read', 'preferences.edit']
+  })
+  const repository = createTaroCommunicationRepository()
+  expect(repository.savePersonalImagePreference({
+    tileId: 'tile', boardId: 'board', labelSnapshot: '熟悉物品', image: '/tmp/image.jpg'
+  } as any)).toMatchObject({ tileId: 'tile', boardId: 'board' })
+  expect(h.values.has(careScopedKey('cboard_communication_personal_image_preferences'))).toBe(true)
+  expect(h.values.has(careScopedKey('care-pending-personalImagePreferences'))).toBe(true)
+})
+
+test('cloud hydration can project personal image preferences without creating a pending edit', () => {
+  const repository = createTaroCommunicationRepository()
+  withCareHydration(() => repository.savePersonalImagePreference({
+    tileId: 'tile', boardId: 'board', labelSnapshot: '熟悉物品', image: '/tmp/image.jpg'
+  } as any))
+  expect(h.values.has(careScopedKey('cboard_communication_personal_image_preferences'))).toBe(true)
+  expect(h.values.has(careScopedKey('care-pending-personalImagePreferences'))).toBe(false)
+})

@@ -28,6 +28,7 @@ import type {
   CboardPhoneVerificationPurpose
 } from '../../platform/cboardAccountPort'
 import AccountSyncPanel from './AccountSyncPanel'
+import ProductSupportPanel from './ProductSupportPanel'
 import PictogramImage from '../../components/PictogramImage'
 import { resolveSpeechVoiceSelection } from './speechVoiceCatalog'
 import './CommunicationSettings.css'
@@ -199,6 +200,7 @@ export default function CommunicationSettingsPanel({
 
   return (
     <View className='panel communication-settings-panel'>
+      <ProductSupportPanel />
       <View className='section-heading'>
         <Text className='section-heading__index'>设</Text>
         <View>

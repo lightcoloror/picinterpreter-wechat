@@ -7,6 +7,7 @@ import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin'
 import type { Compiler } from 'webpack'
 import devConfig from './dev'
 import prodConfig from './prod'
+import { createRuntimeCapabilities } from '../src/config/runtimeCapabilityPolicy'
 
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
 const shouldAnalyzeWeappBundle = process.env.WEAPP_BUNDLE_ANALYZE === '1'
@@ -44,12 +45,20 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
   const envValue = name => String(process.env[name] || '').trim()
   const boolEnv = name => (envValue(name).toLowerCase() === 'true' ? 'true' : '')
   const outputRoot = process.env.TARO_APP_OUTPUT_ROOT || 'dist'
+  const capabilities = createRuntimeCapabilities({
+    releaseChannel: envValue('TARO_APP_RELEASE_CHANNEL'),
+    apiBaseUrl: envValue('TARO_APP_API_BASE_URL'),
+    enableCloudFeatures: envValue('TARO_APP_ENABLE_CLOUD_FEATURES'),
+    enableAiFeatures: envValue('TARO_APP_ENABLE_AI_FEATURES'),
+    enableOcr: envValue('TARO_APP_ENABLE_OCR'),
+    enableOnlinePictograms: envValue('TARO_APP_ENABLE_ONLINE_PICTOGRAMS'),
+    enableDialectAsr: envValue('TARO_APP_ENABLE_DIALECT_ASR')
+  })
   const releaseFlags = {
     schema: 1, marker: 'cboard-release-feature-manifest-v1', sourceRevision: buildRevision,
-    releaseChannel: envValue('TARO_APP_RELEASE_CHANNEL') || 'development',
-    apiBaseUrl: envValue('TARO_APP_API_BASE_URL'),
+    ...capabilities,
     careCollaboration: boolEnv('TARO_APP_CARE_COLLABORATION') === 'true',
-    cloudFeatures: boolEnv('TARO_APP_ENABLE_CLOUD_FEATURES') === 'true',
+    accountClosure: boolEnv('TARO_APP_CARE_ACCOUNT_CLOSURE') === 'true',
     publicTrial: boolEnv('TARO_APP_CARE_PUBLIC_TRIAL') === 'true'
   }
   const baseConfig: UserConfigExport<'webpack5'> = {
@@ -73,6 +82,8 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
     },
     plugins: ["@tarojs/plugin-generator"],
     defineConstants: {
+      'process.env.TARO_APP_SUPPORT_URL': JSON.stringify(envValue('TARO_APP_SUPPORT_URL')),
+      'process.env.TARO_APP_SUPPORT_EMAIL': JSON.stringify(envValue('TARO_APP_SUPPORT_EMAIL')),
       'process.env.TARO_APP_CARE_COLLABORATION': JSON.stringify(boolEnv('TARO_APP_CARE_COLLABORATION')),
       'process.env.TARO_APP_CARE_ACCOUNT_CLOSURE': JSON.stringify(boolEnv('TARO_APP_CARE_ACCOUNT_CLOSURE')),
       'process.env.TARO_APP_CARE_PUBLIC_TRIAL': JSON.stringify(boolEnv('TARO_APP_CARE_PUBLIC_TRIAL')),
@@ -84,7 +95,7 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
         envValue('TARO_APP_RELEASE_CHANNEL') || 'development'
       ),
       'process.env.TARO_APP_ENABLE_CLOUD_FEATURES': JSON.stringify(
-        boolEnv('TARO_APP_ENABLE_CLOUD_FEATURES')
+        envValue('TARO_APP_ENABLE_CLOUD_FEATURES')
       ),
       'process.env.TARO_APP_ENABLE_AI_FEATURES': JSON.stringify(
         process.env.TARO_APP_ENABLE_AI_FEATURES || ''

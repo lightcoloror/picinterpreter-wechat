@@ -2,10 +2,11 @@ import { describe, expect, test } from 'vitest'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 
 import {
   evaluateReleaseReadiness,
-  hasTrackedChanges
+  hasSourceChanges
 } from '../scripts/release-readiness.mjs'
 
 const completeConfig = {
@@ -28,8 +29,8 @@ const completeConfig = {
   arasaacCommercialUseResolved: false,
   coreRealDeviceAcceptanceConfirmed: true,
   realDeviceAcceptanceConfirmed: true,
-  performanceScanConfirmed: true
-  ,publicTrial: false
+  performanceScanConfirmed: true,
+  publicTrial: false
 }
 
 const enabledManifest = {
@@ -38,10 +39,86 @@ const enabledManifest = {
   sourceRevision: 'test-revision',
   careCollaboration: true,
   cloudFeatures: true,
+  aiFeatures: true,
+  ocr: true,
+  onlinePictograms: true,
+  dialectAsr: true,
+  accountClosure: true,
   publicTrial: true
 }
 
 describe('formal release readiness gate', () => {
+  const offlineManifest = {
+    ...enabledManifest,
+    releaseChannel: 'production', apiBaseUrl: '',
+    cloudFeatures: false, aiFeatures: false, ocr: false,
+    onlinePictograms: false, dialectAsr: false,
+    careCollaboration: false, accountClosure: false, publicTrial: false
+  }
+  const offlineConfig = {
+    ...completeConfig, apiBaseUrl: '',
+    apiRequestDomainConfigured: false, apiUploadDomainConfigured: false,
+    apiDownloadDomainConfigured: false, arasaacRequestDomainConfigured: false,
+    arasaacDownloadDomainConfigured: false, realDeviceAcceptanceConfirmed: false
+  }
+  test('an offline artifact keeps filing, privacy, licensing and core acceptance gates but needs no unused API domains', () => {
+    expect(evaluateReleaseReadiness(offlineConfig, offlineManifest)).toEqual({ ready: true, issues: [] })
+    expect(evaluateReleaseReadiness({ ...offlineConfig, privacyGuideConfirmed: false }, offlineManifest).ready).toBe(false)
+    expect(evaluateReleaseReadiness({ ...offlineConfig, coreRealDeviceAcceptanceConfirmed: false }, offlineManifest).ready).toBe(false)
+    expect(evaluateReleaseReadiness({ ...offlineConfig, filingNumber: '' }, offlineManifest).ready).toBe(false)
+  })
+  test.each(['cloudFeatures', 'aiFeatures', 'ocr', 'dialectAsr'])('requires the configured API and network acceptance when %s is present in the artifact', field => {
+    const result = evaluateReleaseReadiness(offlineConfig, { ...offlineManifest, [field]: true })
+    expect(result.issues).toContain('正式 cboard-api 必须使用公众可访问的 HTTPS 域名。')
+    expect(result.issues).toContain('尚未完成正式后端、真实账号和真实网络下的手机验收。')
+  })
+  test('requires only direct pictogram domains when online pictograms run without an API', () => {
+    const result = evaluateReleaseReadiness(offlineConfig, { ...offlineManifest, onlinePictograms: true })
+    expect(result.issues).toContain('尚未配置 https://api.arasaac.org 为 request 合法域名。')
+    expect(result.issues).not.toContain('正式 cboard-api 必须使用公众可访问的 HTTPS 域名。')
+  })
+  test('an absent or incomplete manifest cannot waive API prerequisites', () => {
+    for (const manifest of [null, { ...offlineManifest, aiFeatures: undefined }, { ...offlineManifest, cloudFeatures: 'false' }]) {
+      const result = evaluateReleaseReadiness(offlineConfig, manifest)
+      expect(result.ready).toBe(false)
+      expect(result.issues).toContain('正式代码包缺少完整可核验的功能开关 manifest，请重新构建。')
+      expect(result.issues).toContain('正式 cboard-api 必须使用公众可访问的 HTTPS 域名。')
+    }
+  })
+  test('all formal builds need the production channel, and any network build must match its configured endpoint', () => {
+    expect(evaluateReleaseReadiness(offlineConfig, { ...offlineManifest, releaseChannel: 'preview' }).ready).toBe(false)
+    const result = evaluateReleaseReadiness(completeConfig, {
+      ...offlineManifest, cloudFeatures: true, apiBaseUrl: 'https://different.example.cn'
+    })
+    expect(result.issues).toContain('联网构建 API endpoint 必须有效且与 readiness 配置一致。')
+  })
+  test.each(['https://api.example.cn/api?key=value', 'https://api.example.cn/api#path'])('rejects API bases whose query or fragment would swallow appended endpoints: %s', apiBaseUrl => {
+    const result = evaluateReleaseReadiness({ ...completeConfig, apiBaseUrl }, {
+      ...offlineManifest, cloudFeatures: true, apiBaseUrl
+    })
+    expect(result.issues).toContain('正式 cboard-api 必须使用公众可访问的 HTTPS 域名。')
+  })
+  test.each([
+    'https://192.168.1.20', 'https://10.0.0.1', 'https://172.16.0.1',
+    'https://127.1', 'https://[::1]', 'https://[::ffff:127.0.0.1]',
+    'https://api.localhost', 'https://api.local.', 'https://api.test',
+    'https://api.internal', 'https://server', 'https://router.home.arpa',
+    'https://user:secret@api.example.cn'
+  ])('rejects development or credential-bearing endpoints: %s', endpoint => {
+    const result = evaluateReleaseReadiness({
+      ...completeConfig, apiBaseUrl: endpoint, sourceCodeUrl: endpoint
+    })
+    expect(result.issues).toContain('正式 cboard-api 必须使用公众可访问的 HTTPS 域名。')
+    expect(result.issues).toContain('GPLv3 对应源码地址必须是公众可访问的 HTTPS 地址。')
+  })
+  test.each([false, undefined])('blocks public trial without verified closure UI flag: %s', accountClosure => {
+    const result = evaluateReleaseReadiness({ ...completeConfig, publicTrial: true }, {
+      ...enabledManifest, accountClosure,
+      releaseChannel: 'production', apiBaseUrl: completeConfig.apiBaseUrl
+    })
+    expect(result.ready).toBe(false)
+    expect(result.issues).toContain('public-trial 构建必须启用账号注销确认流程。')
+  })
   test('passes a reviewed non-commercial release', () => {
     expect(evaluateReleaseReadiness({ ...completeConfig, publicTrial: true }, {
       ...enabledManifest, releaseChannel: 'production', apiBaseUrl: completeConfig.apiBaseUrl
@@ -146,7 +223,30 @@ describe('formal release readiness gate', () => {
     }
   })
 
-  test('exposes tracked-source dirty state for the formal CLI gate', () => {
-    expect(hasTrackedChanges(process.cwd())).toBe(true)
+  test('blocks untracked, staged and modified source while accepting a clean checkout', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'cboard-source-gate-'))
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe' })
+    try {
+      git('init')
+      writeFileSync(path.join(root, '.gitignore'), 'cache/\n')
+      git('add', '.gitignore')
+      git('-c', 'user.name=Synthetic Test', '-c', 'user.email=test@example.invalid',
+        '-c', 'commit.gpgsign=false', 'commit', '-m', 'synthetic fixture')
+      expect(hasSourceChanges(root)).toBe(false)
+      mkdirSync(path.join(root, 'cache'))
+      writeFileSync(path.join(root, 'cache', 'ignored.txt'), 'cache')
+      expect(hasSourceChanges(root)).toBe(false)
+      writeFileSync(path.join(root, 'new-source.ts'), 'export const enabled = true')
+      expect(hasSourceChanges(root)).toBe(true)
+      git('add', 'new-source.ts')
+      expect(hasSourceChanges(root)).toBe(true)
+      git('-c', 'user.name=Synthetic Test', '-c', 'user.email=test@example.invalid',
+        '-c', 'commit.gpgsign=false', 'commit', '-m', 'synthetic source')
+      expect(hasSourceChanges(root)).toBe(false)
+      writeFileSync(path.join(root, 'new-source.ts'), 'export const enabled = false')
+      expect(hasSourceChanges(root)).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

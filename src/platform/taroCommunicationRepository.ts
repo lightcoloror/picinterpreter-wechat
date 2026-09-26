@@ -3,7 +3,7 @@ import type { CommunicationRepository } from '@cboard-communication-core/reposit
 import { sameCareFavoriteList } from '@cboard-communication-core/careFavoriteChanges'
 
 import { createWechatCommunicationRepository } from './communicationRepository'
-import { careScopedKey, currentCareContext, markCareLocalChange, withCareHydration } from './taroCareContext'
+import { canEditCarePreferences, careScopedKey, currentCareContext, isCareHydrating, markCareLocalChange, withCareHydration } from './taroCareContext'
 
 export function createTaroCommunicationRepository(): CommunicationRepository {
   // Repository schema initialization is local, not a user-requested cloud edit.
@@ -15,6 +15,13 @@ export function createTaroCommunicationRepository(): CommunicationRepository {
       return Taro.getStorageSync(careScopedKey(key))
     },
     setStorageSync: (key, value) => {
+      if (
+        key === 'cboard_communication_personal_image_preferences' &&
+        !isCareHydrating() &&
+        !canEditCarePreferences()
+      ) {
+        throw new Error('当前档案未授予熟悉图片偏好编辑权限')
+      }
       const previous = key === 'cboard_communication_saved_phrases'
         ? Taro.getStorageSync(careScopedKey(key)) : null
       Taro.setStorageSync(careScopedKey(key), value)

@@ -6,6 +6,8 @@ export interface CareSelection {
   familyId: string
   name?: string
   relationship?: { role: string; defaultMode: string } | null
+  permissions?: string[]
+  locked?: boolean
 }
 export function currentCareContext() {
   if (process.env.TARO_APP_CARE_COLLABORATION !== 'true') return null
@@ -24,6 +26,25 @@ export function careScopedKey(key: string) {
   return c ? `communication-v2:${[c.accountId, c.familyId || 'unselected', c.profileId || 'unselected'].map(encodeURIComponent).join(':')}:${key}` : key
 }
 let hydrating = false
+export function isCareHydrating() {
+  return hydrating
+}
+export function canEditCareLibrary(context = currentCareContext()) {
+  return hasCarePermission('library.edit', context)
+}
+export function canEditCarePreferences(context = currentCareContext()) {
+  return hasCarePermission('preferences.edit', context)
+}
+function hasCarePermission(
+  permission: string,
+  context: NonNullable<ReturnType<typeof currentCareContext>> | null
+) {
+  if (!context || context.accountId === 'offline') return true
+  if (!Array.isArray(context.selection?.permissions)) return false
+  return context.selection.permissions.includes(permission) &&
+    !context.selection.locked &&
+    !Taro.getStorageSync(careScopedKey('care-locked'))
+}
 export function withCareHydration<T>(operation: () => T): T {
   const previous = hydrating
   hydrating = true

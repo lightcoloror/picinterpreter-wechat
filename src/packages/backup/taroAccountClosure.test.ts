@@ -1,6 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
+import { createTaroAccountClosure } from './taroAccountClosure'
 
 const h = vi.hoisted(() => ({ disk: new Map<string, string>(),
   session: { token: 'synthetic', user: { id: 'owner' } } as any,
@@ -26,7 +27,6 @@ vi.mock('../../platform/taroCareRuntime', () => ({ runtime: { request: async () 
 vi.mock('@cboard-communication-core/careDeviceArchive', () => ({ exportCareDeviceArchive: h.exportCare }))
 vi.mock('../../platform/taroPrivateArchiveEncryption', () => ({ encryptPrivateArchiveData: h.encrypt }))
 vi.mock('../../platform/taroPictureLibraryArchivePort', () => ({ taroPictureLibraryArchivePort: { shareArchive: h.share } }))
-import { createTaroAccountClosure } from './taroAccountClosure'
 
 const cache = (key: string, value: any) => h.disk.set(`/test/care-${bytesToHex(sha256(key))}.json`, JSON.stringify(value))
 beforeEach(() => {

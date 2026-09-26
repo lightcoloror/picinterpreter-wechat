@@ -18,7 +18,10 @@ export default defineAppConfig({
       pages: [
         'pages/library/index',
         'pages/personal-images/index',
-        'pages/public-boards/index',
+        ...(process.env.TARO_APP_RELEASE_CHANNEL === 'production' &&
+        process.env.TARO_APP_ENABLE_CLOUD_FEATURES !== 'true'
+          ? []
+          : ['pages/public-boards/index']),
         'pages/boards/index'
       ]
     },

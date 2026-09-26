@@ -7,15 +7,16 @@ import { sameCareFavoriteContent } from '@cboard-communication-core/careFavorite
 import { projectCareSharedPhrases } from '@cboard-communication-core/careSharedPhrases'
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
+import { careErrorMessage } from '@cboard-communication-core/careErrors'
 import { runtime } from './taroCareRuntime'
-import { careScopedKey, currentCareContext, withCareHydration } from './taroCareContext'
+import { careScopedKey, currentCareContext, saveCareSelection, withCareHydration } from './taroCareContext'
 import { taroPictureLibraryStore } from './taroPictureLibraryStore'
+import { preserveCareLocalTileMedia } from './careLocalMediaProjection'
 import { createTaroCommunicationRepository } from './taroCommunicationRepository'
 import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { configureCareCloudSync } from './communicationCloudSync'
 import { taroPictogramOrderingStore } from './taroPictogramOrderingStore'
 import { careBuiltinImages } from './taroCareBuiltinImages'
-import { careErrorMessage } from '@cboard-communication-core/careErrors'
 
 let active: { key: string; engine: ReturnType<typeof createCareSync> } | null = null
 let pending: Promise<void> | null = null
@@ -35,9 +36,28 @@ async function readImage(source: string) {
   return { data: Taro.arrayBufferToBase64(bytes.buffer as ArrayBuffer), sha256: bytesToHex(sha256(bytes)),
     type: match ? match[1] : bytes[0] === 137 ? 'image/png' : bytes[0] === 255 ? 'image/jpeg' : 'image/webp' }
 }
-function project(engine: ReturnType<typeof createCareSync>) {
+function project(
+  engine: ReturnType<typeof createCareSync>,
+  expectedContext: NonNullable<ReturnType<typeof currentCareContext>>
+) {
   const snapshot = engine.view()
   Taro.setStorageSync(careScopedKey('care-locked'), snapshot.locked)
+  const current = currentCareContext()
+  if (
+    expectedContext.accountId !== 'offline' &&
+    current?.accountId === expectedContext.accountId &&
+    current.familyId === expectedContext.familyId &&
+    current.profileId === expectedContext.profileId &&
+    current.selection
+  ) {
+    saveCareSelection({
+      ...current.selection,
+      permissions: Array.isArray(snapshot.permissions)
+        ? snapshot.permissions
+        : [],
+      locked: Boolean(snapshot.locked)
+    })
+  }
   if (snapshot.locked) Taro.setStorageSync(careScopedKey('care-shared-favorites'), [])
   if (!snapshot.locked) {
     const image = (asset: any) => {
@@ -46,7 +66,19 @@ function project(engine: ReturnType<typeof createCareSync>) {
       Taro.getFileSystemManager().writeFileSync(path, Taro.base64ToArrayBuffer(asset.data))
       return path
     }
-    const boards = projectCareBoards(snapshot, image)
+    const cloudBoards = projectCareBoards(snapshot, image)
+    const sameScope = current &&
+      current.accountId === expectedContext.accountId &&
+      current.familyId === expectedContext.familyId &&
+      current.profileId === expectedContext.profileId
+    const boards = sameScope
+      ? preserveCareLocalTileMedia(
+          cloudBoards,
+          taroPictureLibraryStore.load(),
+          current,
+          expectedContext
+        )
+      : cloudBoards
     Taro.setStorageSync(careScopedKey('care-shared-favorites'), projectCareSharedPhrases(snapshot, currentCareContext()?.selection?.relationship?.role, image))
     withCareHydration(() => {
       const defaults: Record<string, unknown> = {}
@@ -167,7 +199,7 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
           throw error
         }
       }
-    } finally { if (currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) project(engine) }
+    } finally { if (currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) project(engine, context) }
   })().finally(() => { pending = null })
   return pending
 }

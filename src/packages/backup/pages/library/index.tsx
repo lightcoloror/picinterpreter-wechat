@@ -644,6 +644,7 @@ export default function PictureLibraryBackupPage() {
     <View className='library-backup-page'>
       {process.env.TARO_APP_CARE_ACCOUNT_CLOSURE === 'true' && <AccountClosurePanel
         key={accountSession?.user.id || 'guest'}
+        onSessionCleared={() => setAccountSession(taroCboardSessionStore.load())}
         buildArchive={async () => {
           const built = await backupService.buildArchive(PICTURE_LIBRARY_ARCHIVE_SCOPES.full, undefined, { includeDeviceData: true })
           if (!built.ok || !built.archive) throw new Error(built.message)

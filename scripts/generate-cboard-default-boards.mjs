@@ -49,6 +49,7 @@ function resolveMagick() {
     'magick',
     'D:/Program Files/ImageMagick-7.1.2-Q16-HDRI/magick.exe'
   ].filter(Boolean)
+  const permissionDeniedCandidates = []
 
   for (const candidate of candidates) {
     const result = spawnSync(candidate, ['-version'], {
@@ -58,6 +59,17 @@ function resolveMagick() {
     if (result.status === 0) {
       return candidate
     }
+    if (result.error?.code === 'EPERM') {
+      permissionDeniedCandidates.push(candidate)
+    }
+  }
+
+  if (permissionDeniedCandidates.length) {
+    throw new Error(
+      'ImageMagick exists but could not be started due to process permission: ' +
+      permissionDeniedCandidates.join(', ') +
+      '. Run generation in a runtime that permits child processes.'
+    )
   }
 
   throw new Error(

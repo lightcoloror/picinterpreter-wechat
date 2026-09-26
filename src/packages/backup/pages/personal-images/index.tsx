@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Text, View } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import type { PictogramAttribution } from '@cboard-communication-core/pictogramAttribution'
@@ -11,7 +11,9 @@ import {
 } from '@cboard-communication-core/publicPictogramCuration'
 
 import PersonalImageManager from '../../../../features/communication/PersonalImageManager'
+import { runtimeCapabilities } from '../../../../config/runtimeCapabilities'
 import { createTaroCommunicationRepository } from '../../../../platform/taroCommunicationRepository'
+import { canEditCareLibrary, canEditCarePreferences, careScopedKey, currentCareContext } from '../../../../platform/taroCareContext'
 import { taroPictureLibraryStore } from '../../../../platform/taroPictureLibraryStore'
 import { rebasePersonalImageLibraryBoards } from '../../personalImageLibrary'
 import CustomPictogramEditor from '../../CustomPictogramEditor'
@@ -48,14 +50,78 @@ export default function PersonalImageLibraryPage() {
   const [preferences, setPreferences] = useState<
     PersonalImagePreference[]
   >(() => repository.loadPersonalImagePreferences())
+  const [canEditLibrary, setCanEditLibrary] = useState(() => canEditCareLibrary())
+  const [canEditPreferences, setCanEditPreferences] = useState(() => canEditCarePreferences())
+  const [storageMode, setStorageMode] = useState<'device' | 'care-profile'>(() => {
+    const context = currentCareContext()
+    return context?.profileId && context.accountId !== 'offline' ? 'care-profile' : 'device'
+  })
+  const [locked, setLocked] = useState(() => Boolean(
+    currentCareContext()?.selection?.locked ||
+    Taro.getStorageSync(careScopedKey('care-locked'))
+  ))
+  const renderedContext = currentCareContext()
+  const renderScopeParts = [
+    renderedContext?.accountId || '',
+    renderedContext?.familyId || '',
+    renderedContext?.profileId || ''
+  ]
+  const renderedScope = JSON.stringify(renderScopeParts)
+  const [loadedScope, setLoadedScope] = useState(renderedScope)
+  const scopeStillCurrent = () => {
+    const context = currentCareContext()
+    return renderedScope === JSON.stringify([
+      context?.accountId || '',
+      context?.familyId || '',
+      context?.profileId || ''
+    ])
+  }
+
+  const refreshPermission = () => {
+    const context = currentCareContext()
+    const isLocked = Boolean(context?.selection?.locked || Taro.getStorageSync(careScopedKey('care-locked')))
+    setCanEditLibrary(canEditCareLibrary(context))
+    setCanEditPreferences(canEditCarePreferences(context))
+    setStorageMode(context?.profileId && context.accountId !== 'offline' ? 'care-profile' : 'device')
+    setLocked(isLocked)
+  }
 
   const reload = () => {
+    refreshPermission()
+    const context = currentCareContext()
+    const nextScope = JSON.stringify([
+      context?.accountId || '',
+      context?.familyId || '',
+      context?.profileId || ''
+    ])
+    setLoadedScope(nextScope)
+    if (context?.selection?.locked || Taro.getStorageSync(careScopedKey('care-locked'))) {
+      setLibraryBoards([])
+      setPreferences([])
+      return
+    }
     setLibraryBoards(loadLibraryBoards())
     setPreferences(repository.loadPersonalImagePreferences())
   }
 
   useDidShow(reload)
-  const boards = rebasePersonalImageLibraryBoards(libraryBoards)
+  useEffect(() => {
+    const changed = () => {
+      setLibraryBoards([])
+      setPreferences([])
+      reload()
+    }
+    Taro.eventCenter.on('care-content-changed', changed)
+    Taro.eventCenter.on('care-identity-changed', changed)
+    return () => {
+      Taro.eventCenter.off('care-content-changed', changed)
+      Taro.eventCenter.off('care-identity-changed', changed)
+    }
+  }, [])
+  const scopeIsLoaded = loadedScope === renderedScope
+  const visibleLibraryBoards = scopeIsLoaded && !locked ? libraryBoards : []
+  const visiblePreferences = scopeIsLoaded && !locked ? preferences : []
+  const boards = rebasePersonalImageLibraryBoards(visibleLibraryBoards)
 
   const savePersonalImage = (entry: {
     tileId: string
@@ -64,6 +130,7 @@ export default function PersonalImageLibraryPage() {
     image: string
     pictogramAttribution: PictogramAttribution
   }) => {
+    if (!scopeStillCurrent() || !canEditCarePreferences()) return false
     try {
       const saved = repository.savePersonalImagePreference(entry)
       if (!saved) return false
@@ -79,6 +146,7 @@ export default function PersonalImageLibraryPage() {
     tileId: string,
     boardId: string
   ) => {
+    if (!scopeStillCurrent() || !canEditCarePreferences()) return false
     try {
       const removed = repository.removePersonalImagePreference(
         tileId,
@@ -96,6 +164,7 @@ export default function PersonalImageLibraryPage() {
   const createCustomPictogram = (
     value: CustomPersonalPictogramInput
   ) => {
+    if (!scopeStillCurrent() || !canEditCareLibrary()) return false
     try {
       const current = taroPictureLibraryStore.load()
       const created = createCustomPersonalPictogram(current, value)
@@ -111,6 +180,7 @@ export default function PersonalImageLibraryPage() {
     boardId: string,
     tileId: string
   ) => {
+    if (!scopeStillCurrent() || !canEditCareLibrary()) return false
     try {
       const current = taroPictureLibraryStore.load()
       const removed = removeCustomPersonalPictogram(
@@ -135,6 +205,7 @@ export default function PersonalImageLibraryPage() {
       targetBoardId: string
     }
   ) => {
+    if (!scopeStillCurrent() || !canEditCareLibrary()) return false
     try {
       const current = taroPictureLibraryStore.load()
       const copied = copyCustomPersonalPictogram(
@@ -156,6 +227,7 @@ export default function PersonalImageLibraryPage() {
     sourceBoardId: string,
     value: CustomPersonalPictogramInput
   ) => {
+    if (!scopeStillCurrent() || !canEditCareLibrary()) return false
     try {
       const current = taroPictureLibraryStore.load()
       const updated = updateCustomPersonalPictogram(
@@ -177,6 +249,7 @@ export default function PersonalImageLibraryPage() {
     tileId: string,
     direction: 'earlier' | 'later'
   ) => {
+    if (!scopeStillCurrent() || !canEditCareLibrary()) return false
     try {
       const current = taroPictureLibraryStore.load()
       const moved = moveCustomPersonalPictogram(
@@ -198,6 +271,7 @@ export default function PersonalImageLibraryPage() {
     sourceTile: TileDTO
     targetBoardId: string
   }) => {
+    if (!scopeStillCurrent() || !canEditCareLibrary()) return false
     try {
       const current = taroPictureLibraryStore.load()
       const created = createCuratedPublicPictogram(current, {
@@ -218,6 +292,7 @@ export default function PersonalImageLibraryPage() {
     boardId: string,
     tileId: string
   ) => {
+    if (!scopeStillCurrent() || !canEditCareLibrary()) return false
     try {
       const current = taroPictureLibraryStore.load()
       const removed = removeCuratedPublicPictogram(
@@ -272,28 +347,37 @@ export default function PersonalImageLibraryPage() {
         </Button>
       </View>
 
-      <View className='public-library-entry'>
-        <View>
-          <Text className='public-library-entry__title'>
-            从 CBoard 公共板补充图库
-          </Text>
-          <Text className='public-library-entry__hint'>
-            按板名或作者跨分类查找，只在家属维护区导入；不会干扰患者当前表达。
-          </Text>
-        </View>
-        <Button
-          id='open-public-board-library-button'
-          className='public-library-entry__button'
-          onClick={openPublicBoards}
-        >
-          查找公共沟通板
-        </Button>
-      </View>
+      {locked ? (
+        <Text className='personal-image-manager__privacy'>当前家庭档案已锁定，图片资料暂不可查看；解锁后重新进入此页。</Text>
+      ) : runtimeCapabilities.cloudFeatures && (
+        <View className='public-board-cloud-tools'>
+          <View className='public-library-entry'>
+            <View>
+              <Text className='public-library-entry__title'>
+                从 CBoard 公共板补充图库
+              </Text>
+              <Text className='public-library-entry__hint'>
+                按板名或作者跨分类查找，只在家属维护区导入；不会干扰患者当前表达。
+              </Text>
+            </View>
+            <Button
+              id='open-public-board-library-button'
+              className='public-library-entry__button'
+              onClick={openPublicBoards}
+            >
+              查找公共沟通板
+            </Button>
+          </View>
 
-      <PublicBoardPublisher boards={libraryBoards} />
+          {canEditLibrary && scopeIsLoaded && <PublicBoardPublisher boards={visibleLibraryBoards} />}
+        </View>
+      )}
 
       <CustomPictogramEditor
-        boards={libraryBoards}
+        key={`${renderedScope}:${canEditLibrary}`}
+        boards={visibleLibraryBoards}
+        canEdit={canEditLibrary}
+        storageMode={storageMode}
         onCreate={createCustomPictogram}
         onUpdate={updateCustomPictogram}
         onCopy={copyCustomPictogram}
@@ -302,8 +386,12 @@ export default function PersonalImageLibraryPage() {
       />
 
       <PersonalImageManager
+        key={`${renderedScope}:${canEditPreferences}:${canEditLibrary}`}
         boards={boards}
-        preferences={preferences}
+        preferences={visiblePreferences}
+        canEditPreferences={canEditPreferences}
+        canEditLibrary={canEditLibrary}
+        storageMode={storageMode}
         onSave={savePersonalImage}
         onRemove={removePersonalImage}
         onCuratePublic={curatePublicPictogram}

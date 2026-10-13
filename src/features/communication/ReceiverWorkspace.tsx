@@ -68,6 +68,7 @@ import {
   refreshReceiverMissingItems,
   replaceReceiverItem,
   replaceReceiverReviewItems,
+  retainReceiverItemAsText,
   type ReceiverWorkspaceResumeState,
   runReceiverSession,
   updateReceiverInput
@@ -161,6 +162,11 @@ export default function ReceiverWorkspace({
   const [isRecognitionActivityVisible, setIsRecognitionActivityVisible] =
     useState(false)
   const [isAiResegmenting, setIsAiResegmenting] = useState(false)
+  const [pendingAiSuggestion, setPendingAiSuggestion] = useState<{
+    applied: ReturnType<typeof applyCommunicationAiResegmentation>
+    generation: number
+    signature: string
+  } | null>(null)
   const [isCantoneseMode, setIsCantoneseMode] = useState(false)
   const [dialectSourceText, setDialectSourceText] = useState('')
   const [isDialectNormalizing, setIsDialectNormalizing] = useState(false)
@@ -215,7 +221,8 @@ export default function ReceiverWorkspace({
   useEffect(() => {
     aiGenerationRef.current += 1
     setIsAiResegmenting(false)
-  }, [receiverSignature])
+    setPendingAiSuggestion(null)
+  }, [receiverSignature, boards, segmentationDraft])
 
   useEffect(() => {
     if (
@@ -689,6 +696,7 @@ export default function ReceiverWorkspace({
     })
     const generation = ++aiGenerationRef.current
     const requestedSignature = receiverSignature
+    setPendingAiSuggestion(null)
     setIsAiResegmenting(true)
     setNotice('正在请求 AI 分词，当前图片序列仍可人工修改。')
     const result = await taroCommunicationAiPort.resegment({
@@ -718,9 +726,21 @@ export default function ReceiverWorkspace({
       correctionMemory
     })
     if (!applied.applied) {
-      setNotice('AI 分词没有改善匹配率，已保留当前人工可编辑结果。')
+      setNotice('AI 建议未完整保留原文，已保留当前人工可编辑结果。')
       return
     }
+
+    setPendingAiSuggestion({ applied, generation, signature: requestedSignature })
+    setNotice('AI 建议已返回，请比较后选择采用；当前结果尚未改变。')
+  }
+
+  const handleAcceptAiSuggestion = () => {
+    if (
+      !pendingAiSuggestion ||
+      pendingAiSuggestion.generation !== aiGenerationRef.current ||
+      pendingAiSuggestion.signature !== receiverSignatureRef.current
+    ) return
+    const { applied } = pendingAiSuggestion
 
     const nextSession = replaceReceiverReviewItems(
       session,
@@ -746,6 +766,7 @@ export default function ReceiverWorkspace({
       'segmentation-ai',
       nextSession
     )
+    setPendingAiSuggestion(null)
     setSegmentationDraft(
       formatReceiverSegmentation(applied.segmentation || nextSession.segments)
     )
@@ -1067,7 +1088,7 @@ export default function ReceiverWorkspace({
           <View className='segmentation-editor'>
             <View className='segmentation-editor__heading'>
               <Text className='segmentation-editor__title'>分词结果（可修改）</Text>
-              <Text className='segmentation-editor__hint'>用 / 或空格分开词语；删掉分隔符可合并词语</Text>
+              <Text className='segmentation-editor__hint'>用 / 分开词语；引号内的标点和空白属于原文，请保留。删掉词语之间的分隔符可合并词语。</Text>
             </View>
             <Textarea
               id='receiver-segmentation-input'
@@ -1093,6 +1114,25 @@ export default function ReceiverWorkspace({
             >
               {isAiResegmenting ? 'AI 分词中' : 'AI 辅助分词'}
             </Button>
+            {pendingAiSuggestion && (
+              <View id='receiver-ai-suggestion'>
+                <Text>原文：{session.inputText}</Text>
+                <Text>当前分词：{session.reviewItems.map(item => item.token).join(' / ')}</Text>
+                <Text>建议分词：{pendingAiSuggestion.applied.segmentation?.join(' / ')}</Text>
+                <Button id='receiver-accept-ai-suggestion' onClick={handleAcceptAiSuggestion}>
+                  采用分词建议
+                </Button>
+                <Button
+                  id='receiver-dismiss-ai-suggestion'
+                  onClick={() => {
+                    setPendingAiSuggestion(null)
+                    setNotice('已保留当前结果。')
+                  }}
+                >
+                  保留当前结果
+                </Button>
+              </View>
+            )}
             <View
               className='correction-learning'
               id={correctionMemoryProbeId}
@@ -1171,6 +1211,19 @@ export default function ReceiverWorkspace({
                   </Text>
                 </View>
                 <View className='review-row__actions'>
+                  {!item.tile && (
+                    <Button
+                      className='review-action'
+                      id={`receiver-retain-text-${index}`}
+                      onClick={() => persistReceiverEdit(
+                        RECEIVER_CORRECTION_ACTIONS.replace,
+                        item.id,
+                        retainReceiverItemAsText(session, item.id)
+                      )}
+                    >
+                      保留文字
+                    </Button>
+                  )}
                   <Button
                     className='review-action'
                     disabled={index === 0}

@@ -4,8 +4,10 @@ import { DEFAULT_BOARD_FIXTURES } from '../fixtures/defaultBoard'
 import { loadCommunicationBoards } from './taroCommunicationBoards'
 import { careBuiltinImages } from './taroCareBuiltinImages'
 import webBoards from '../../../cboard/src/api/boards.json'
+import builtin15 from '@cboard-communication-core/fixtures/builtin15Reuse.json'
+import { runReceiverSession } from '../features/communication/receiverSession'
 
-const h = vi.hoisted(() => ({ locked: false, boards: [] as any[], context: { profileId: 'patient-a' }, save: vi.fn() }))
+const h = vi.hoisted(() => ({ locked: false, boards: [] as any[], context: { profileId: 'patient-a' } as { profileId: string } | null, save: vi.fn() }))
 vi.mock('@tarojs/taro', () => ({ default: { getStorageSync: () => h.locked } }))
 vi.mock('./taroCareContext', () => ({ currentCareContext: () => h.context, careScopedKey: (key: string) => key }))
 vi.mock('./taroPictureLibraryStore', () => ({ taroPictureLibraryStore: { load: () => h.boards, save: h.save } }))
@@ -73,4 +75,41 @@ test('the shipped mini catalog resolves every Web default reference to its corre
     expect(expected).toBeTruthy()
     expect(careBuiltinImages.resolve(reference)).toBe(expected)
   }
+})
+
+test('existing patient sees the 15 bundled words without changing or uploading its own boards', () => {
+  h.context = { profileId: 'synthetic-existing-patient' }
+  h.locked = false
+  const own = [{ id: 'synthetic-personal', name: '个人图库', tiles: [] }]
+  h.boards = own
+  const displayed = loadCommunicationBoards()
+  for (const card of builtin15.cards) for (const token of card.tokens) {
+    expect(runReceiverSession(token, displayed).reviewItems[0].tile?.id).toBe(card.id)
+  }
+  expect(h.boards).toBe(own)
+  expect(h.save).not.toHaveBeenCalled()
+})
+
+test('a customized same-ID board is not overwritten by a bundled update', () => {
+  h.context = { profileId: 'synthetic-existing-patient' }
+  h.locked = false
+  const card = builtin15.cards.find(card => card.label === '刷牙')!
+  const customized = { id: card.board, name: '我的卫生图板', tiles: [] }
+  h.boards = [customized]
+  const displayed = loadCommunicationBoards()
+  expect(displayed.find(board => board.id === card.board)).toBe(customized)
+  expect(runReceiverSession('刷牙', displayed).reviewItems[0].tile).toBeNull()
+  expect(h.save).not.toHaveBeenCalled()
+})
+
+test('legacy guest library remains unchanged instead of silently restoring removed cards', () => {
+  h.context = null
+  h.locked = false
+  const old = DEFAULT_BOARD_FIXTURES.map(board => ({
+    ...board, tiles: board.tiles.filter(tile => !tile.id.startsWith('tuyujia-builtin-'))
+  }))
+  h.boards = old
+  expect(loadCommunicationBoards()).toBe(old)
+  expect(runReceiverSession('刷牙', loadCommunicationBoards()).reviewItems[0].tile).toBeNull()
+  expect(h.save).not.toHaveBeenCalled()
 })

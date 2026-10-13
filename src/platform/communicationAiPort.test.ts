@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { buildCommunicationAiSentenceRequest } from '@cboard-communication-core/communicationAi'
+import { buildCommunicationAiSentenceRequest, normalizeResegmentResponse } from '@cboard-communication-core/communicationAi'
 import { createCommunicationAiPort } from './communicationAiPort'
 
 function createHarness(options: { apiBaseUrl?: string; token?: string } = {}) {
@@ -58,7 +58,7 @@ function createHarness(options: { apiBaseUrl?: string; token?: string } = {}) {
     if (url.endsWith('/resegment')) {
       return {
         statusCode: 200,
-        data: { tokens: ['我', '不开心', '越界词'], provider: 'cboard-api-ai' }
+        data: { tokens: ['我', '不开心'], provider: 'cboard-api-ai' }
       }
     }
     if (url.endsWith('/dialect-normalization')) {
@@ -322,15 +322,42 @@ describe('communicationAiPort', () => {
     )
   })
 
-  test('filters AI resegmentation against the local pictogram vocabulary', async function () {
+  test('validates a legacy source-preserving response without filtering unknown words', async function () {
     const harness = createHarness()
     const result = await harness.port.resegment({
       text: '我不开心',
       unmatchedTokens: ['不开心'],
-      pictogramVocabulary: ['我', '不开心']
+      pictogramVocabulary: ['我']
     })
 
     expect(result.value?.tokens).toEqual(['我', '不开心'])
+    expect(result.value?.contractVersion).toBe(2)
+  })
+
+  test.each([
+    ['别打针', ['打针']],
+    ['喝水喝水', ['喝水']],
+    ['我不是不想吃饭', ['我', '吃饭']]
+  ])('refuses a lossy server response for %s', async (text, tokens) => {
+    const harness = createHarness()
+    harness.request.mockResolvedValueOnce({ statusCode: 200, data: { tokens, provider: 'test' } } as never)
+    const result = await harness.port.resegment({ text })
+    expect(result.ok).toBe(false)
+    expect(result.message).toContain('保留当前结果')
+    expect(result.value).toBeUndefined()
+  })
+
+  test('preserves v2 spans, repeated tokens and sends the complete source', async () => {
+    const harness = createHarness()
+    const text = '🙂喝水喝水'
+    const response = normalizeResegmentResponse(text, { tokens: ['🙂', '喝水', '喝水'] })
+    harness.request.mockResolvedValueOnce({ statusCode: 200, data: response } as never)
+    const result = await harness.port.resegment({ text, pictogramVocabulary: ['喝水'] })
+    expect(result.value).toEqual(response)
+    expect(harness.request).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ text, contractVersion: 2 }) }))
+    harness.request.mockClear()
+    expect((await harness.port.resegment({ text: '水'.repeat(121) })).ok).toBe(false)
+    expect(harness.request).not.toHaveBeenCalled()
   })
 
   test('returns a source-preserving editable Cantonese draft', async () => {

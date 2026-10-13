@@ -373,6 +373,7 @@ declare module '@cboard-communication-core/symbolMatching' {
   import type { PictogramAttribution } from '@cboard-communication-core/pictogramAttribution'
 
   export interface CommunicationCatalogItem {
+    textOnly?: true
     id: string
     tile: TileDTO
     boardId: string
@@ -386,6 +387,7 @@ declare module '@cboard-communication-core/symbolMatching' {
   }
 
   export interface CommunicationOutputItem {
+    textOnly?: true
     id: string
     image: string
     mediaType?: 'image' | 'gif' | 'video'
@@ -598,6 +600,8 @@ declare module '@cboard-communication-core/receiverPipeline' {
   import type { PictogramAttribution } from '@cboard-communication-core/pictogramAttribution'
 
   export interface ReceiverReviewItem {
+    lookupToken?: string
+    sourceSpan?: { start: number; end: number; offsetUnit: 'unicode-code-point' }
     id: string
     token: string
     tile: CommunicationCatalogItem | null
@@ -628,6 +632,9 @@ declare module '@cboard-communication-core/receiverPipeline' {
       matchType: string
       confidence: number
       originalToken: string
+      textOnly?: true
+      lookupToken?: string
+      sourceSpan?: { start: number; end: number; offsetUnit: 'unicode-code-point' }
       attribution?: PictogramAttribution
     }>
   }
@@ -695,6 +702,7 @@ declare module '@cboard-communication-core/receiverPipeline' {
     itemId: string,
     candidate: CommunicationCatalogItem
   ): ReceiverReviewItem[]
+  export function retainReceiverReviewItemAsText(items: ReceiverReviewItem[], itemId: string): ReceiverReviewItem[]
 }
 
 declare module '@cboard-communication-core/receiverLifecycle' {

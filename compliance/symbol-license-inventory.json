@@ -5,11 +5,11 @@
   "decision": "Mulberry 可在履行署名和同方式共享后使用；ARASAAC 与 CBoard 待处理项在批准前阻断正式发布。",
   "reason": "公司主体发布可能构成商业使用，不能把非商业或不明确许可当作已批准。",
   "evidence": {
-    "mulberry": 792,
+    "mulberry": 805,
     "arasaac": 62,
     "cboard": 17
   },
-  "effectiveScope": "微信小程序随包的 46 个默认板和 871 个图卡。",
+  "effectiveScope": "微信小程序随包的 46 个默认板和 884 个图卡。",
   "items": [
     {
       "boardId": "root",
@@ -1035,6 +1035,17 @@
       "image": "/assets/cboard-default/1a9276f9aa24a91c.png"
     },
     {
+      "boardId": "r1-FTvnvaW",
+      "boardName": "食物",
+      "tileId": "tuyujia-builtin-eat",
+      "label": "吃",
+      "labelKey": "symbol.foodFeedingAndEating.toEat",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/eat_1_,_to.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/fabde49e9aa4000d.png"
+    },
+    {
       "boardId": "r1ftpPhPa-",
       "boardName": "蔬菜",
       "tileId": "S1iDMCcTXqKW",
@@ -1968,6 +1979,17 @@
       "sourceImage": "/symbols/mulberry/grapes.svg",
       "originalId": "",
       "image": "/assets/cboard-default/ed396b18a310b22d.png"
+    },
+    {
+      "boardId": "S1It6P2Pp-",
+      "boardName": "水果",
+      "tileId": "tuyujia-builtin-fruit",
+      "label": "水果",
+      "labelKey": "symbol.foodFruit.fruit",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/fruit.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/af47b0c7f6795900.png"
     },
     {
       "boardId": "HkYF6DnP6-",
@@ -3983,6 +4005,28 @@
       "image": "/assets/cboard-default/6e36953d845b6788.png"
     },
     {
+      "boardId": "BkmeFaw3DpZ",
+      "boardName": "活动",
+      "tileId": "tuyujia-builtin-paint",
+      "label": "画画",
+      "labelKey": "symbol.artMaking.toPaint",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/paint_1_,_to.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/364983bb76cc8099.png"
+    },
+    {
+      "boardId": "BkmeFaw3DpZ",
+      "boardName": "活动",
+      "tileId": "tuyujia-builtin-photographs",
+      "label": "照片",
+      "labelKey": "symbol.holidayAndTravel.photographs",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/photographs.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/454366637d1ba144.png"
+    },
+    {
       "boardId": "S1VlYTPnwTZ",
       "boardName": "学校",
       "tileId": "SyVYXA96Qctb",
@@ -4918,6 +4962,39 @@
       "image": "/assets/cboard-default/157a1fa5acb46be1.png"
     },
     {
+      "boardId": "SywlK6Phv6Z",
+      "boardName": "动作",
+      "tileId": "tuyujia-builtin-turn-off",
+      "label": "关掉",
+      "labelKey": "symbol.peopleActions.toTurnOff",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/turn_off_,_to.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/d7962d3d63ae21d2.png"
+    },
+    {
+      "boardId": "SywlK6Phv6Z",
+      "boardName": "动作",
+      "tileId": "tuyujia-builtin-walk",
+      "label": "走路",
+      "labelKey": "symbol.peopleActions.toWalk",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/walk_,_to.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/5e6ef43e5d25e578.png"
+    },
+    {
+      "boardId": "SywlK6Phv6Z",
+      "boardName": "动作",
+      "tileId": "tuyujia-builtin-push",
+      "label": "推",
+      "labelKey": "symbol.peopleActions.toPush",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/push_,_to.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/c0776f58e7496558.png"
+    },
+    {
       "boardId": "S1uxKpvhPpb",
       "boardName": "地点",
       "tileId": "SyFCQ0qamcFb",
@@ -5081,6 +5158,17 @@
       "sourceImage": "/symbols/arasaac/countries.png",
       "originalId": "",
       "image": "/assets/cboard-default/b60dfb4af3f491c0.png"
+    },
+    {
+      "boardId": "S1uxKpvhPpb",
+      "boardName": "地点",
+      "tileId": "tuyujia-builtin-room",
+      "label": "房间",
+      "labelKey": "symbol.buildingPublic.room",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/room.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/6e1d60a9aea529db.png"
     },
     {
       "boardId": "BkFxtpD3wpW",
@@ -5763,6 +5851,17 @@
       "sourceImage": "/symbols/mulberry/sticky.svg",
       "originalId": "",
       "image": "/assets/cboard-default/d5fce523bf4a2e87.png"
+    },
+    {
+      "boardId": "HkclK6DnDTb",
+      "boardName": "描述",
+      "tileId": "tuyujia-builtin-high",
+      "label": "高",
+      "labelKey": "symbol.descriptiveQuantity.high",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/high.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/d0ff7415fee833fd.png"
     },
     {
       "boardId": "HkslFaD3PTZ",
@@ -7613,6 +7712,17 @@
       "image": "/assets/cboard-default/195bb056ce244496.png"
     },
     {
+      "boardId": "SkmWY6DhwpW",
+      "boardName": "医疗",
+      "tileId": "tuyujia-builtin-hearing-aid",
+      "label": "助听器",
+      "labelKey": "symbol.healthcareMedicalItems.hearingAid",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/hearing_aid_1.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/a404a0f45b49bdbc.png"
+    },
+    {
       "boardId": "SkNbtaP3vaZ",
       "boardName": "方位",
       "tileId": "BkpTECqTQ5Y-",
@@ -8953,6 +9063,39 @@
       "sourceImage": "/symbols/mulberry/hair_dye.svg",
       "originalId": "",
       "image": "/assets/cboard-default/0d10191f3cd54c07.png"
+    },
+    {
+      "boardId": "H1iZY6DnvT-",
+      "boardName": "个人卫生",
+      "tileId": "tuyujia-builtin-nappy",
+      "label": "尿布",
+      "labelKey": "symbol.healthcareGroomingItems.nappy",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/nappy.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/6e5bf93a6851070a.png"
+    },
+    {
+      "boardId": "H1iZY6DnvT-",
+      "boardName": "个人卫生",
+      "tileId": "tuyujia-builtin-brush-teeth",
+      "label": "刷牙",
+      "labelKey": "symbol.healthcareGroomingActivities.toBrushTeeth",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/brush_teeth_,_to.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/095ebe7938d4945d.png"
+    },
+    {
+      "boardId": "H1iZY6DnvT-",
+      "boardName": "个人卫生",
+      "tileId": "tuyujia-builtin-change-clothes",
+      "label": "换衣服",
+      "labelKey": "symbol.healthcareGroomingActivities.toChangeClothes",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/change_clothes_,_to.svg",
+      "originalId": "",
+      "image": "/assets/cboard-default/85f651088a441fd3.png"
     },
     {
       "boardId": "BJ3Wt6whwaW",

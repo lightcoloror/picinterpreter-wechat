@@ -1,5 +1,10 @@
 import type { ConversationScene } from '@cboard-communication-core/conversationSession'
 import {
+  normalizeResegmentResponse,
+  validateResegmentSource
+} from '@cboard-communication-core/communicationAi'
+import type { CommunicationAiResegmentResponse as CoreResegmentResponse } from '@cboard-communication-core/communicationAi'
+import {
   buildDialectNormalizationRequest,
   normalizeDialectNormalizationResponse
 } from '@cboard-communication-core/dialectNormalization'
@@ -22,10 +27,7 @@ export interface CommunicationAiCandidateFeedback {
   feedback: 'up' | 'down'
 }
 
-export interface CommunicationAiResegmentResponse {
-  tokens: string[]
-  provider: string
-}
+export type CommunicationAiResegmentResponse = CoreResegmentResponse
 
 export interface CommunicationDialectNormalizationResponse {
   sourceText: string
@@ -539,8 +541,10 @@ export function createCommunicationAiPort(
     },
 
     async resegment(input) {
-      const text = String(input.text || '').trim().slice(0, MAX_TEXT_LENGTH)
-      if (!text) return { ok: false, message: '请输入需要重新分词的文字。' }
+      const text = input.text
+      if (!validateResegmentSource(text)) {
+        return { ok: false, message: 'AI 优化支持 1–120 字，请分段处理；原文已保留。' }
+      }
 
       const vocabulary = normalizeList(
         input.pictogramVocabulary,
@@ -551,6 +555,7 @@ export function createCommunicationAiPort(
         '/gpt/communication/resegment',
         'POST',
         {
+          contractVersion: 2,
           text,
           unmatchedTokens: normalizeList(
             input.unmatchedTokens,
@@ -562,23 +567,15 @@ export function createCommunicationAiPort(
       )
       if (!result.ok) return { ok: false, message: result.message }
 
-      const raw = result.value as Record<string, unknown>
-      let tokens = normalizeResponseList(raw.tokens, MAX_LABELS, MAX_LABEL_LENGTH)
-      if (vocabulary.length) {
-        const vocabularySet = new Set(vocabulary)
-        tokens = tokens.filter(token => vocabularySet.has(token))
-      }
-      if (!tokens.length) {
-        return { ok: false, message: 'AI 未给出更合适的分词，请继续人工修正。' }
+      const normalized = normalizeResegmentResponse(text, result.value)
+      if (!normalized) {
+        return { ok: false, message: 'AI 建议未完整保留原文，已保留当前结果，请继续人工修正。' }
       }
 
       return {
         ok: true,
         message: 'AI 分词已返回，请照护者确认后应用。',
-        value: {
-          tokens,
-          provider: String(raw.provider || 'cboard-api-ai')
-        }
+        value: normalized
       }
     }
   }

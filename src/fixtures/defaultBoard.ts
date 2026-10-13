@@ -17,6 +17,8 @@ import { decodeCboardDefaultRuntimePayload } from './cboardDefaultRuntime'
 export const DEFAULT_ROOT_BOARD_ID = 'root'
 
 const CALIBRATED_DEFAULT_LABEL_KEYS = [
+  'symbol.peopleActions.toSleepMale',
+  'symbol.healthcareGroomingActivities.toBathe',
   'symbol.peopleProfession.nurse',
   'symbol.peopleProfession.speechLanguageTherapist',
   'symbol.electricalPhone.iphone',

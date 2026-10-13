@@ -15,6 +15,7 @@ import {
   parseReceiverSegmentationInput,
   refreshReceiverMissingItems,
   replaceReceiverItem,
+  retainReceiverItemAsText,
   restoreReceiverWorkspaceFromRecord,
   resumeReceiverWorkspaceAfterDisplay,
   runReceiverSession
@@ -26,6 +27,94 @@ function createReviewIdFactory() {
 }
 
 describe('WeChat receiver session', () => {
+  test.each([
+    ['你是想喝水吗？', ['你', '是', '想', '喝', '水', '吗', '？']],
+    ['今天吃了三次药', ['今天', '吃', '了', '三', '次', '药']],
+    ['后天早上八点再来', ['后天', '早上', '八', '点', '再', '来']],
+    ['我想换一个枕头', ['我', '想', '换', '一', '个', '枕头']],
+    ['二十三次', ['二十三', '次']],
+    ['一个人', ['一个人']],
+    ['我想用助行器', ['我', '想', '用', '助行器']],
+    ['只喝两口水', ['只', '喝', '两', '口', '水']],
+    ['你是不是想吐？', ['你', '是不是', '想吐', '？']],
+    ['请找眼镜盒，不是眼镜', ['请', '找', '眼镜盒', '，', '不是', '眼镜']],
+    ['水温是37.5℃', ['水温', '是', '37.5', '℃']]
+  ])('retains repaired boundaries through offline confirmation and restore: %s', (raw, expected) => {
+    const descriptor = Object.getOwnPropertyDescriptor(Intl, 'Segmenter')
+    try {
+      for (const fallback of [false, true]) {
+        if (fallback) Object.defineProperty(Intl, 'Segmenter', { configurable: true, value: undefined })
+        const state = runReceiverSession(raw as string, DEFAULT_BOARD_FIXTURES, { createId: createReviewIdFactory() })
+        expect(state.reviewItems.map(item => item.token)).toEqual(expected)
+        let next = state
+        state.reviewItems.filter(item => !item.tile).forEach(item => { next = retainReceiverItemAsText(next, item.id) })
+        const history = buildConfirmedReceiverHistory(next)!
+        const restored = restoreReceiverWorkspaceFromRecord({ ...JSON.parse(JSON.stringify(history)), id: 'common-sentence-record', recordStatus: 'confirmed' }, DEFAULT_BOARD_FIXTURES)!
+        expect(restored.session.reviewItems.map(item => item.token)).toEqual(expected)
+        expect(restored.session.reviewItems.map(item => item.token).join('')).toBe(raw)
+      }
+    } finally {
+      if (descriptor) Object.defineProperty(Intl, 'Segmenter', descriptor)
+      else delete (Intl as unknown as Record<string, unknown>).Segmenter
+    }
+  })
+
+  test('keeps standalone negation and a whole eating-meal action through confirmation and restore', () => {
+    const raw = '我今晚不回家吃饭'
+    const expected = ['我', '今晚', '不', '回家', '吃饭']
+    const state = runReceiverSession(raw, DEFAULT_BOARD_FIXTURES, { createId: createReviewIdFactory() })
+    expect(state.reviewItems.map(item => item.token)).toEqual(expected)
+    expect(state.reviewItems.find(item => item.token === '吃饭')!.tile).toBeNull()
+    let next = state
+    state.reviewItems.filter(item => !item.tile).forEach(item => { next = retainReceiverItemAsText(next, item.id) })
+    const history = buildConfirmedReceiverHistory(next)!
+    expect(history.output!.map(item => item.vocalization).join('')).toBe(raw)
+    const restored = restoreReceiverWorkspaceFromRecord({ ...JSON.parse(JSON.stringify(history)), id: 'meal-record', recordStatus: 'confirmed' }, DEFAULT_BOARD_FIXTURES)!
+    expect(restored.session.reviewItems.map(item => item.token)).toEqual(expected)
+    expect(restored.segmentationDraft).toBe('我 / 今晚 / 不 / 回家 / 吃饭')
+  })
+
+  test('keeps the pain location through explicit text fallback and session restore', () => {
+    const raw = '我背疼'
+    const state = runReceiverSession(raw, DEFAULT_BOARD_FIXTURES, { createId: createReviewIdFactory() })
+    const pain = state.reviewItems.find(item => item.token === '背疼')!
+    expect(pain).toBeDefined()
+    expect(pain.tile).toBeNull()
+    let next = state
+    state.reviewItems.filter(item => !item.tile).forEach(item => { next = retainReceiverItemAsText(next, item.id) })
+    const history = buildConfirmedReceiverHistory(next)!
+    const restored = restoreReceiverWorkspaceFromRecord({ ...JSON.parse(JSON.stringify(history)), id: 'pain-record', recordStatus: 'confirmed' }, DEFAULT_BOARD_FIXTURES)!
+    expect(restored.session.outputPreview.map(item => item.vocalization).join('')).toBe(raw)
+    expect(restored.session.reviewItems.find(item => item.token === '背疼')!.tile?.textOnly).toBe(true)
+  })
+
+  test('preserves double-negation speech through text fallback and session restore with default boards', () => {
+    const raw = '我不是不想吃饭'
+    const state = runReceiverSession(raw, DEFAULT_BOARD_FIXTURES, { createId: createReviewIdFactory() })
+    expect(state.reviewItems.map(item => item.token)).toEqual(['我', '不是', '不', '想', '吃饭'])
+    expect(state.reviewItems.find(item => item.token === '不是')!.tile).toBeNull()
+    let next = state
+    state.reviewItems.filter(item => !item.tile).forEach(item => { next = retainReceiverItemAsText(next, item.id) })
+    const history = buildConfirmedReceiverHistory(next)!
+    expect(history.output!.map(item => item.vocalization).join('')).toBe(raw)
+    const restored = restoreReceiverWorkspaceFromRecord({ ...JSON.parse(JSON.stringify(history)), id: 'negative-record', recordStatus: 'confirmed' }, DEFAULT_BOARD_FIXTURES)!
+    expect(restored.session.outputPreview.map(item => item.vocalization).join('')).toBe(raw)
+  })
+
+  test('retains missing negatives only after an explicit choice and restores literal text on another session', () => {
+    const state = runReceiverSession(' 不要水吗？ ', [], { createId: createReviewIdFactory() })
+    expect(state.reviewItems.map(item => item.token).join('')).toBe(state.inputText)
+    expect(state.quality.missingCount).toBeGreaterThan(0)
+    let next = state
+    state.reviewItems.filter(item => !item.tile).forEach(item => { next = retainReceiverItemAsText(next, item.id) })
+    expect(next.quality.missingCount).toBe(0)
+    expect(state.quality.missingCount).toBeGreaterThan(0)
+    const history = buildConfirmedReceiverHistory(next)!
+    const restored = restoreReceiverWorkspaceFromRecord({ ...JSON.parse(JSON.stringify(history)), id: 'record', recordStatus: 'confirmed' }, [])!
+    expect(restored.session.outputPreview.map(item => item.label).join('')).toBe('不要水吗？')
+    expect(restored.session.reviewItems.every(item => item.tile?.textOnly)).toBe(true)
+    expect(parseReceiverSegmentationInput(restored.segmentationDraft)).toEqual(restored.session.segments)
+  })
   test('fills OCR text as an editable unmatched draft without auto matching', () => {
     const state = createReceiverWorkspaceFromRecognizedText(
       '  我想\n喝水  '
@@ -118,7 +207,7 @@ describe('WeChat receiver session', () => {
       'exact'
     ])
     expect(session.outputPreview.map(item => item.label)).toEqual([
-      '我想',
+      '想',
       '喝',
       '水'
     ])
@@ -148,8 +237,8 @@ describe('WeChat receiver session', () => {
     ])
     expect(watchTv.outputPreview.map(item => item.label)).toEqual([
       '我',
-      '我想',
-      '看电视'
+      '想',
+      '看个电视'
     ])
     expect(fever.reviewItems.map(item => item.token)).toEqual([
       '我',
@@ -323,7 +412,7 @@ describe('WeChat receiver session', () => {
     expect(caregiverRefreshed.reviewItems[0].tile?.id).toBe(drink!.id)
   })
 
-  test('uses calibrated default-board labels for high-risk care concepts', () => {
+  test('uses calibrated pictures while preserving received high-risk care wording', () => {
     const session = runReceiverSession(
       '恶心护士手机',
       DEFAULT_BOARD_FIXTURES,
@@ -334,7 +423,7 @@ describe('WeChat receiver session', () => {
     )
 
     expect(session.outputPreview.map(item => item.label)).toEqual([
-      '想吐',
+      '恶心',
       '护士',
       '手机'
     ])
@@ -357,7 +446,8 @@ describe('WeChat receiver session', () => {
       }
     )
 
-    expect(session.segments).toEqual(['叉子', '刀', '勺子', '碗'])
+    expect(session.segments).toEqual(['叉子', ' ', '刀', ' ', '勺子', ' ', '碗'])
+    expect(session.segments.join('')).toBe(session.inputText)
     expect(session.outputPreview.map(item => item.label)).toEqual([
       '叉子',
       '刀',
@@ -367,8 +457,8 @@ describe('WeChat receiver session', () => {
     expect(session.outputPreview.every(item => Boolean(item.image))).toBe(true)
     expect(session.quality).toEqual(
       expect.objectContaining({
-        matchedCount: 4,
-        totalCount: 4,
+        matchedCount: 7,
+        totalCount: 7,
         needsReview: false
       })
     )
@@ -571,7 +661,7 @@ describe('WeChat receiver session', () => {
       'manual'
     ])
     expect(refreshed.outputPreview.map(item => item.label)).toEqual([
-      '火星',
+      '火星词',
       '喝'
     ])
     expect(refreshed.reviewItems[1]).toBe(manuallyEdited.reviewItems[1])

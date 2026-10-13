@@ -35,11 +35,26 @@ declare module '@cboard-communication-core/communicationAi' {
   }
 
   export interface CommunicationAiResegmentRequest {
-    contractVersion: 1
+    contractVersion: 2
     text: string
     unmatchedTokens: string[]
     pictogramVocabulary: string[]
   }
+
+  export interface CommunicationAiResegmentResponse {
+    contractVersion: 2
+    sourceText: string
+    offsetUnit: 'unicode-code-point'
+    tokens: string[]
+    segments: Array<{ start: number; end: number; surface: string }>
+    requiresConfirmation: true
+    provider: string
+  }
+  export function validateResegmentSource(text: unknown): boolean
+  export function normalizeResegmentResponse(
+    text: string,
+    response: unknown
+  ): CommunicationAiResegmentResponse | null
 
   export function buildCommunicationAiSentenceRequest(input: {
     output: Array<{ label?: string }>
@@ -74,7 +89,7 @@ declare module '@cboard-communication-core/communicationAi' {
 
   export function applyCommunicationAiResegmentation(input: {
     currentReviewItems: ReceiverReviewItem[]
-    response: { tokens: string[]; provider?: string }
+    response: unknown
     text: string
     boards: BoardDTO[]
     intl?: unknown
@@ -87,5 +102,9 @@ declare module '@cboard-communication-core/communicationAi' {
     quality: ReceiverMatchQuality
     segmentation?: string[]
     provider?: string
+    reason?: 'source-mismatch'
+    requiresConfirmation?: true
+    sourceText?: string
+    segments?: CommunicationAiResegmentResponse['segments']
   }
 }

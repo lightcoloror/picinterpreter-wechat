@@ -121,7 +121,7 @@ if (process.argv.includes('--write-inventory')) {
           'Mulberry 可在履行署名和同方式共享后使用；ARASAAC 与 CBoard 待处理项在批准前阻断正式发布。',
         reason: '公司主体发布可能构成商业使用，不能把非商业或不明确许可当作已批准。',
         evidence: counts,
-        effectiveScope: '微信小程序随包的 46 个默认板和 871 个图卡。',
+        effectiveScope: `微信小程序随包的 ${boards.length} 个默认板和 ${inventory.length} 个图卡。`,
         items: inventory
       },
       null,

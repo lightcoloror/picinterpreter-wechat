@@ -2,6 +2,7 @@
 
 - 更新时间：`2026-07-29 11:43:32`
 - 执行工具 / 模型：`Codex（GPT-5）`
+- 图卡清单更新：`2026-10-12 13:30 +08:00`，`Codex（GPT-6）`；接回13张现有Mulberry图卡，保留原归属和许可条件。
 
 本文记录图语家微信小程序当前直接复用或在运行时访问的第三方代码、图符、插件与服务。根目录 `LICENSE` 只覆盖本项目代码及 GPLv3 派生代码，不会改变图符、在线候选或插件各自的许可条件。
 
@@ -18,11 +19,11 @@
 
 ## 2. 随包图符
 
-当前生成清单为 46 个板、871 张图卡和 798 个去重 PNG。图卡归属测试按上游来源识别为：
+当前生成清单为 46 个板、884 张图卡和 810 个去重 PNG。图卡归属测试按上游来源识别为：
 
 | 来源 | 图卡数 | 许可证 / 状态 | 署名与来源 |
 | --- | ---: | --- | --- |
-| Mulberry Symbols | 792 | CC BY-SA 4.0 | https://mulberrysymbols.org/ |
+| Mulberry Symbols | 805 | CC BY-SA 4.0 | https://mulberrysymbols.org/ |
 | ARASAAC | 62 | CC BY-NC-SA 4.0 | 作者 Sergio Palao；https://arasaac.org/ |
 | CBoard Symbols | 17 | CBoard 上游未提供逐图独立许可证 | https://github.com/cboard-org/cboard/tree/master/public/symbols/cboard |
 

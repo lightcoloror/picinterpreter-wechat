@@ -22,6 +22,7 @@ import {
   insertReceiverReviewItem,
   moveReceiverReviewItem,
   replaceReceiverReviewItem,
+  retainReceiverReviewItemAsText,
   restoreReceiverLoopState,
   type ReceiverHistoryEntry,
   type ReceiverMatchQuality,
@@ -103,6 +104,10 @@ export function replaceReceiverReviewItems(
   reviewItems: ReceiverReviewItem[]
 ): ReceiverSessionState {
   return rebuildReceiverSession(state.inputText, reviewItems, state.matched)
+}
+
+export function retainReceiverItemAsText(state: ReceiverSessionState, itemId: string): ReceiverSessionState {
+  return rebuildReceiverSession(state.inputText, retainReceiverReviewItemAsText(state.reviewItems, itemId), state.matched)
 }
 
 export function createEmptyReceiverSession(inputText = ''): ReceiverSessionState {
@@ -220,9 +225,9 @@ export function runReceiverSession(
   boards: BoardDTO[],
   options: ReceiverSessionOptions = {}
 ): ReceiverSessionState {
-  const normalizedInput = String(inputText || '').trim()
+  const normalizedInput = String(inputText || '')
 
-  if (!normalizedInput) {
+  if (!normalizedInput.trim()) {
     return createEmptyReceiverSession()
   }
 

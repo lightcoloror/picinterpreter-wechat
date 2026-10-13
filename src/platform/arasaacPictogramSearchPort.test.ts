@@ -28,6 +28,18 @@ function createHarness() {
 }
 
 describe('ARASAAC pictogram search port', () => {
+  test.each([['尿片', '2863'], ['一点点', '7209']])('reuses the reviewed lookup for %s and caches only on request', async (token, id) => {
+    const harness = createHarness()
+    harness.request.mockRejectedValue(new Error('synthetic provider offline'))
+    const result = await harness.port.search([token])
+    expect(result.value?.[0].token).toBe(token)
+    expect(result.value?.[0].pictogram.source.originalId).toBe(id)
+    expect(harness.downloadFile).not.toHaveBeenCalled()
+    const cached = await harness.port.cache(result.value![0].pictogram)
+    expect(cached.ok).toBe(true)
+    expect(cached.value?.image).toBe('wxfile://saved/toilet.png')
+    expect(cached.value?.source.originalId).toBe(id)
+  })
   test('queries one bounded missing token at a time with source metadata', async () => {
     const harness = createHarness()
     const result = await harness.port.search([

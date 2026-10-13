@@ -904,6 +904,7 @@ declare module '@cboard-communication-core/runtimePictogram' {
     image: string
     backgroundColor: string
     source: RuntimePictogramSource
+    semantics?: import('@cboard-communication-core/pictogramSemantics').PictogramSemantics
   }
 
   export function normalizeRuntimePictogram(

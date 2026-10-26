@@ -1,5 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
+import {
+  playExpressionSentence as sharedPlay, stopExpressionPlayback as sharedStop
+} from '@cboard-communication-core/expressionPlaybackCoordinator'
+import {
+  playExpressionSentence, stopExpressionPlayback
+} from '../../features/communication/expressionPlaybackCoordinator'
 
 function readSource(name: string) {
   return readFileSync(new URL(name, import.meta.url), 'utf8')
@@ -21,13 +27,12 @@ describe('personal tile audio placement', () => {
     const workspace = readSource(
       '../../features/communication/ExpressionWorkspace.tsx'
     )
-    const playback = readSource(
-      '../../features/communication/expressionPlaybackCoordinator.ts'
-    )
 
     expect(workspace).toContain('playExpressionSentence')
     expect(workspace).toContain('stopExpressionPlayback')
-    expect(playback).toContain('createExpressionPlaybackFrames')
-    expect(playback).toContain('clip.fallbackText')
+    // The former local implementation is now the shared Web/mini coordinator.
+    // Follow the import instead of requiring its old function body in this file.
+    expect(playExpressionSentence).toBe(sharedPlay)
+    expect(stopExpressionPlayback).toBe(sharedStop)
   })
 })

@@ -1,4 +1,6 @@
+import { currentImageOperationEpoch } from '@cboard-communication-core/imageOperationEpoch'
 import { getReviewedArasaacIds } from '@cboard-communication-core/reviewedArasaac'
+import { buildArasaacSemanticFields, normalizePictogramSemantics, rankPictogramCandidates, getConceptEnglishQuery, getSemanticCandidateQueries } from '@cboard-communication-core/pictogramSemantics'
 
 import type {
   PictogramPortResult,
@@ -22,6 +24,7 @@ interface ArasaacSaveResult {
 }
 
 interface ArasaacPictogramSearchDependencies {
+  verifyImage?: (source: string) => Promise<{ status: string }>
   request: (options: {
     url: string
     method: 'GET'
@@ -33,9 +36,6 @@ interface ArasaacPictogramSearchDependencies {
 
 const ARASAAC_API_ORIGIN = 'https://api.arasaac.org'
 const ARASAAC_STATIC_ORIGIN = 'https://static.arasaac.org'
-const ARASAAC_BEST_SEARCH_BASE =
-  `${ARASAAC_API_ORIGIN}/v1/pictograms/zh/bestsearch`
-const ARASAAC_SEARCH_BASE = `${ARASAAC_API_ORIGIN}/v1/pictograms/zh/search`
 const MAX_SEARCH_TOKENS = 12
 const MAX_TOKEN_LENGTH = 24
 const MAX_CANDIDATES_PER_TOKEN = 4
@@ -82,7 +82,6 @@ function getPictogramIds(value: unknown, prioritizedIds: number[] = []) {
       seen.add(id)
       return true
     })
-    .slice(0, MAX_CANDIDATES_PER_TOKEN)
 }
 
 function isWechatDomainBlocked(error: unknown) {
@@ -99,11 +98,13 @@ function isWechatDomainBlocked(error: unknown) {
   )
 }
 
-function buildArasaacPictogram(token: string, id: string): RuntimePictogram {
+function buildArasaacPictogram(token: string, id: string, item: Record<string, unknown> = {}, query = token, locale = 'zh'): RuntimePictogram {
+  const fields = buildArasaacSemanticFields(token, query, locale, id, item)
   return {
     id: `runtime_arasaac_${id}`,
-    label: token,
-    vocalization: token,
+    label: fields.label,
+    vocalization: fields.label,
+    semantics: fields.semantics,
     image: `${ARASAAC_STATIC_ORIGIN}/pictograms/${id}/${id}_300.png`,
     backgroundColor: '#ffffff',
     source: {
@@ -132,10 +133,15 @@ function normalizeTrustedCandidate(value: RuntimePictogram) {
     `${ARASAAC_STATIC_ORIGIN}/pictograms/${id}/${id}_300.png`
   if (value.image !== expectedImage) return null
 
-  return buildArasaacPictogram(
+  const normalized = buildArasaacPictogram(
     String(value.label || value.vocalization || '').trim(),
     id
   )
+  const semantics = normalizePictogramSemantics(value.semantics)
+  // A legacy label is not evidence of its original lookup or source meaning.
+  delete normalized.semantics
+  return { ...normalized, label: value.label, vocalization: value.vocalization,
+    ...(semantics ? { semantics } : {}) }
 }
 
 export function createArasaacPictogramSearchPort(
@@ -158,26 +164,52 @@ export function createArasaacPictogramSearchPort(
       for (const token of queryTokens) {
         const reviewedIds = getReviewedArasaacIds(token)
         let candidateIds: string[] = []
+        let sourceItems: Record<string, unknown>[] = []
+        let sourceQuery = token
+        let sourceLocale = 'zh'
+        const semanticPictures = new Map<string, RuntimePictogram>()
+        const completedSemanticQueries = new Set<string>()
+        const englishQuery = getConceptEnglishQuery(token)
+        // Reuse the same qualified concepts as the server. Never translate a
+        // missing word into a broad object label or adopt a search hit directly.
+        const lookups = [{query: token, locale: 'zh', semantic: false},
+          ...(englishQuery ? [{query: englishQuery, locale: 'en', semantic: false}] : []),
+          ...getSemanticCandidateQueries(token).map(query => ({query, locale: 'en', semantic: true}))]
 
-        for (const searchBase of [
-          ARASAAC_BEST_SEARCH_BASE,
-          ARASAAC_SEARCH_BASE
-        ]) {
+        for (const lookup of lookups.flatMap(item => ['bestsearch', 'search'].map(endpoint => ({...item, endpoint})))) {
+          if (lookup.semantic && completedSemanticQueries.has(lookup.query)) continue
           try {
             const response = await dependencies.request({
-              url: `${searchBase}/${encodeURIComponent(token)}`,
+              url: `${ARASAAC_API_ORIGIN}/v1/pictograms/${lookup.locale}/${lookup.endpoint}/${encodeURIComponent(lookup.query)}`,
               method: 'GET',
               header: { Accept: 'application/json' }
             })
             if (response.statusCode < 200 || response.statusCode >= 300) {
-              networkFailed = true
+              // ARASAAC uses 404 for no matches; this is not a network outage.
+              if (response.statusCode !== 404) networkFailed = true
               if (reviewedIds.length) break
               continue
             }
 
-            const liveIds = getPictogramIds(response.data)
+            sourceItems = (Array.isArray(response.data) ? response.data : [])
+              .filter(item => item && typeof item === 'object')
+            const liveIds = rankPictogramCandidates(token, getPictogramIds(response.data, reviewedIds).map(id =>
+              buildArasaacPictogram(token, id,
+                sourceItems.find(item => String(item._id || item.id) === id) || {}, lookup.query, lookup.locale)
+            ), { limit: MAX_CANDIDATES_PER_TOKEN }).map(item => item.source.originalId)
             if (liveIds.length) {
-              candidateIds = getPictogramIds(response.data, reviewedIds)
+              if (lookup.semantic) {
+                liveIds.forEach(id => {
+                  if (!semanticPictures.has(id)) semanticPictures.set(id, buildArasaacPictogram(token, id,
+                    sourceItems.find(item => String(item._id || item.id) === id) || {}, lookup.query, lookup.locale))
+                })
+                completedSemanticQueries.add(lookup.query)
+                candidateIds = [...semanticPictures.keys()]
+                continue
+              }
+              candidateIds = liveIds
+              sourceQuery = lookup.query
+              sourceLocale = lookup.locale
               break
             }
             if (reviewedIds.length) break
@@ -192,16 +224,20 @@ export function createArasaacPictogramSearchPort(
         }
 
         if (!candidateIds.length && reviewedIds.length) {
-          candidateIds = getPictogramIds([], reviewedIds)
+          candidateIds = rankPictogramCandidates(token, getPictogramIds([], reviewedIds).map(id =>
+            buildArasaacPictogram(token, id)
+          ), { limit: MAX_CANDIDATES_PER_TOKEN }).map(item => item.source.originalId)
         }
         if (reviewedIds.length && candidateIds.length) {
           usedReviewedPriority = true
         }
 
-        candidateIds.forEach(id => {
+        rankPictogramCandidates(token, candidateIds.map(id => semanticPictures.get(id) || buildArasaacPictogram(token, id,
+          sourceItems.find(item => String(item._id || item.id) === id) || {}, sourceQuery, sourceLocale)),
+          { limit: MAX_CANDIDATES_PER_TOKEN }).forEach(pictogram => {
           results.push({
             token,
-            pictogram: buildArasaacPictogram(token, id)
+            pictogram
           })
         })
       }
@@ -241,6 +277,7 @@ export function createArasaacPictogramSearchPort(
     },
 
     async cache(pictogram) {
+      const epoch = currentImageOperationEpoch()
       const normalized = normalizeTrustedCandidate(pictogram)
       if (!normalized) {
         return { ok: false, message: '候选图片来源无效，未保存。' }
@@ -265,6 +302,11 @@ export function createArasaacPictogramSearchPort(
           return { ok: false, message: '候选图片无法保存到本机。' }
         }
 
+        if (!dependencies.verifyImage || (await dependencies.verifyImage(saved.savedFilePath)).status !== 'available') {
+          return { ok: false, message: '图片文件未通过本机读取和解码核验，尚未采用，请重试。' }
+        }
+
+        if (epoch !== currentImageOperationEpoch()) return { ok: false, message: '操作范围已变化，图片未采用。' }
         return {
           ok: true,
           message: '图片已确认并保存到本机。',

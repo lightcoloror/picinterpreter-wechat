@@ -29,6 +29,12 @@ const wechatPluginSpeechPort = createWechatSpeechPort({
   timeoutMs: 30_000
 })
 
+// Reuse the local image-file naming pattern, with a per-session counter to
+// distinguish writes issued in the same millisecond. No text or identity in names.
+const speechFileSession = Date.now().toString(36) + '-' +
+  Math.random().toString(36).slice(2, 8)
+let speechFileSequence = 0
+
 export const wechatTileAudioPort = createWechatAudioPlaybackPort({
   createInnerAudioContext: () =>
     Taro.createInnerAudioContext() as SpeechAudioContext,
@@ -58,14 +64,23 @@ export const cboardApiSpeechPort = createServerSpeechPort({
     if (!userDataPath) {
       return Promise.reject(new Error('Wechat user data path is unavailable'))
     }
-    // Reuse one transient path so an interrupted app cannot accumulate audio.
-    const filePath = `${userDataPath}/picinterpreter-tts-current.mp3`
+    // Old writes/cleanup can finish after the next request starts. Never share
+    // that request's file; the server speech adapter removes its own path.
+    const filePath = `${userDataPath}/picinterpreter-tts-${speechFileSession}-${++speechFileSequence}.mp3`
+    const fileSystem = Taro.getFileSystemManager()
     return new Promise((resolve, reject) => {
-      Taro.getFileSystemManager().writeFile({
+      fileSystem.writeFile({
         filePath,
         data,
         success: () => resolve(filePath),
-        fail: reject
+        fail: error => {
+          // A failed write can leave a partial file. Remove only this request's
+          // generated path, without delaying rejection on the cleanup callback.
+          try {
+            fileSystem.unlink({ filePath, success: () => {}, fail: () => {} })
+          } catch (_) { /* Best-effort cleanup, as on successful playback. */ }
+          reject(error)
+        }
       })
     })
   },

@@ -2,6 +2,7 @@ import { EMERGENCY_COMMUNICATION_PHRASES } from '@cboard-communication-core/emer
 import { describe, expect, test } from 'vitest'
 
 import emergencyCboardImages from '../../assets/emergency/cboard-images.json'
+import generatedManifest from '../../generated/cboardDefaultBoards.manifest.json'
 import { getDefaultTileById } from '../../fixtures/defaultBoard'
 import { getEmergencyCommunicationImage } from './emergencyAssets'
 
@@ -33,11 +34,17 @@ describe('emergency communication images', () => {
 
   test('keeps the emergency CBoard manifest aligned with stable tiles', () => {
     emergencyCboardImages.assets.forEach(asset => {
-      const tile = getDefaultTileById(asset.tileId)
-      expect(tile).not.toBeNull()
-      expect(tile?.image).toBe(
-        `/assets/cboard-default/${asset.file}`
-      )
+      if (asset.tileId) {
+        const tile = getDefaultTileById(asset.tileId)
+        expect(tile).not.toBeNull()
+        expect(tile?.image).toBe(`/assets/cboard-default/${asset.file}`)
+      } else {
+        // The old need tile was corrected to a different concept. Emergency
+        // help deliberately retains the original help asset, not the new need.
+        expect(asset.phraseId).toBe('help')
+        expect(asset.sourceImage).toBe('/symbols/mulberry/help_,_to.svg')
+        expect(generatedManifest.retainedImages).toContain(asset.file)
+      }
       expect(getEmergencyCommunicationImage(asset.phraseId)).toBe(
         `/assets/cboard-default/${asset.file}`
       )

@@ -1,4 +1,5 @@
 import type { BoardDTO, TileDTO } from '@cboard-communication-core/dto'
+import { createSavedPhraseUndoService, type SavedPhraseUndoState } from '@cboard-communication-core/savedPhraseUse'
 import { getEffectiveReceiverHistoryEntry, type ReceiverDraftEntry } from '@cboard-communication-core/receiverLifecycle'
 import {
   buildCommunicationHistoryAnonymizedOpenBoardLog,
@@ -22,19 +23,28 @@ import {
   buildCommunicationSavedPhraseExport,
   getCommunicationQuickPhrases,
   importCommunicationSavedPhrases,
+  createSavedPhraseImportService,
   markCommunicationSavedPhraseUsed,
-  renameCommunicationSavedPhrase
+  renameCommunicationSavedPhrase,
+  assignSavedPhraseLifeContext
 } from '@cboard-communication-core/savedPhraseManagement'
 
 export interface CommunicationManagementService {
   loadSavedPhrases(): CommunicationSavedPhraseEntry[]
   addSavedPhrase(sentence: string, output?: TileDTO[]): CommunicationSavedPhraseEntry[]
   renameSavedPhrase(id: string, sentence: string): CommunicationSavedPhraseEntry[]
+  assignLifeContext(id: string, context: string): CommunicationSavedPhraseEntry[]
   deleteSavedPhrase(id: string): CommunicationSavedPhraseEntry[]
+  undoSavedPhraseDelete(operationId: string): CommunicationSavedPhraseEntry[]
+  savedPhraseUndoState(): SavedPhraseUndoState
+  clearSavedPhraseUndo(): void
   markSavedPhraseUsed(id: string): CommunicationSavedPhraseEntry[]
   getQuickPhrases(limit?: number): CommunicationSavedPhraseEntry[]
   exportSavedPhrases(): string
   importSavedPhrases(json: string): ReturnType<typeof importCommunicationSavedPhrases>
+  previewSavedPhrases(json: string): ReturnType<typeof importCommunicationSavedPhrases>
+  confirmSavedPhrasesImport(): ReturnType<ReturnType<typeof createSavedPhraseImportService>['commit']>
+  cancelSavedPhrasesImport(): void
   loadHistory(): CommunicationHistoryEntry[]
   toggleHistoryFavorite(id: string): CommunicationHistoryEntry[]
   updateHistoryCandidateFeedback(
@@ -61,11 +71,15 @@ function buildTileIndex(boards: BoardDTO[]) {
 export function createCommunicationManagementService({
   repository,
   boards,
-  now = Date.now
+  now = Date.now,
+  getScopeKey = () => 'local',
+  canManage = () => true
 }: {
   repository: CommunicationRepository
   boards: BoardDTO[]
   now?: () => number
+  getScopeKey?: () => string
+  canManage?: () => boolean
 }): CommunicationManagementService {
   const tileIndex = buildTileIndex(boards)
 
@@ -81,7 +95,15 @@ export function createCommunicationManagementService({
     )
   }
 
+  const importer = createSavedPhraseImportService({ repository, getScopeKey, availableTileIds: new Set(tileIndex.keys()), resolveTile: (id: string) => tileIndex.get(id) || null, now })
+  const undo = createSavedPhraseUndoService({ repository, getScopeKey, now, canManage })
   return {
+    savedPhraseUndoState: undo.state,
+    clearSavedPhraseUndo: undo.clear,
+    undoSavedPhraseDelete: operationId => undo.undo(operationId).items,
+    previewSavedPhrases: importer.preview,
+    confirmSavedPhrasesImport: importer.commit,
+    cancelSavedPhrasesImport: importer.cancel,
     loadSavedPhrases: () => repository.loadCommunicationSavedPhrases(),
 
     addSavedPhrase(sentence, output = []) {
@@ -103,9 +125,13 @@ export function createCommunicationManagementService({
       return result.changed ? persistSavedPhrases(result.items) : result.items
     },
 
+    assignLifeContext(id, context) {
+      const result = assignSavedPhraseLifeContext(repository.loadCommunicationSavedPhrases(), id, context)
+      return result.changed ? persistSavedPhrases(result.items) : result.items
+    },
+
     deleteSavedPhrase(id) {
-      repository.deleteCommunicationSavedPhrase(id)
-      return repository.loadCommunicationSavedPhrases()
+      return undo.delete(id).items
     },
 
     markSavedPhraseUsed(id) {
@@ -142,7 +168,7 @@ export function createCommunicationManagementService({
         {
           availableTileIds: new Set(tileIndex.keys()),
           resolveTile: id => tileIndex.get(id) || null,
-          now
+          now, maxItems: repository.savedPhraseCapacity
         }
       )
       if (result.ok && result.addedCount) persistSavedPhrases(result.items)

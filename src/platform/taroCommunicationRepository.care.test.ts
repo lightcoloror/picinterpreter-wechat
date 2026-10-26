@@ -1,9 +1,24 @@
+import { createTaroFavoriteStateStore } from './taroFavoriteLocalFileStorage'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { createTaroCommunicationRepository } from './taroCommunicationRepository'
+import { COMMUNICATION_STORAGE_KEYS } from '@cboard-communication-core/repository'
+import { captureMissingTokenImageUsage, createTaroCommunicationRepository } from './taroCommunicationRepository'
 import { careScopedKey, withCareHydration } from './taroCareContext'
 
-const h = vi.hoisted(() => ({ values: new Map<string, unknown>(), trigger: vi.fn() }))
+const h = vi.hoisted(() => ({ values: new Map<string, unknown>(), files: new Map<string, string>(), trigger: vi.fn() }))
 vi.mock('@tarojs/taro', () => ({ default: {
+  env: { USER_DATA_PATH: '/synthetic' },
+  getFileSystemManager: () => ({
+    readFileSync: (path: string) => {
+      if (!h.files.has(path)) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+      return h.files.get(path)
+    },
+    writeFileSync: (path: string, value: string) => h.files.set(path, value),
+    renameSync: (from: string, to: string) => {
+      if (!h.files.has(from)) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+      h.files.set(to, h.files.get(from)!); h.files.delete(from)
+    },
+    readdirSync: () => [...h.files.keys()].map(path => path.split('/').pop())
+  }),
   getStorageSync: (key: string) => h.values.get(key),
   setStorageSync: (key: string, value: unknown) => h.values.set(key, value),
   removeStorageSync: (key: string) => h.values.delete(key),
@@ -14,10 +29,11 @@ vi.mock('./taroCboardAccountPort', () => ({ taroCboardSessionStore: {
 } }))
 
 const shared = { id: 'shared', sentence: '共享收藏', output: [], createdAt: 1 }
-const pending = () => h.values.get(careScopedKey('care-pending-favorites'))
+const pending = () => { const p = createTaroFavoriteStateStore().read().pending; return p ? JSON.stringify(p) : undefined }
 beforeEach(() => {
   vi.stubEnv('TARO_APP_CARE_COLLABORATION', 'true')
   h.values.clear()
+  h.files.clear()
   h.trigger.mockClear()
   h.values.set('care-selection-v1:account', { id: 'patient', familyId: 'family' })
 })
@@ -50,6 +66,18 @@ test('history and favorite usage stay local while explicit edits retain their or
   const second = JSON.parse(String(pending()))
   expect(second.base).toEqual(first.base)
   expect(second.items.find((item: any) => item.id === 'new').sentence).toBe('继续修改')
+})
+
+test('life context edits remain local in the real care-scoped adapter and survive recreation', () => {
+  const repository = createTaroCommunicationRepository()
+  withCareHydration(() => repository.overwriteCommunicationSavedPhrases([shared]))
+  const items = repository.loadCommunicationSavedPhrases()
+  repository.overwriteCommunicationSavedPhrases(items.map(item => ({ ...item, lifeContext: '合成情境' })))
+  expect(h.trigger).not.toHaveBeenCalled()
+  expect(pending()).toBeUndefined()
+  expect(createTaroCommunicationRepository().loadCommunicationSavedPhrases()[0].lifeContext).toBe('合成情境')
+  h.values.set('care-selection-v1:account', { id: 'other-person', familyId: 'family' })
+  expect(createTaroCommunicationRepository().loadCommunicationSavedPhrases()).toEqual([])
 })
 
 test('nested cloud projection does not become a user edit when repository initialization ends', () => {
@@ -97,4 +125,25 @@ test('cloud hydration can project personal image preferences without creating a 
   } as any))
   expect(h.values.has(careScopedKey('cboard_communication_personal_image_preferences'))).toBe(true)
   expect(h.values.has(careScopedKey('care-pending-personalImagePreferences'))).toBe(false)
+})
+
+test('cache rollback checks original and current profile references without changing either', () => {
+  const originalKey = careScopedKey(COMMUNICATION_STORAGE_KEYS.missingTokens)
+  const imageIsInUse = captureMissingTokenImageUsage()
+  h.values.set(originalKey, JSON.stringify([{ resolvedPictogram: { image: 'wxfile://saved/original.png' } }]))
+  h.values.set('care-selection-v1:account', { id: 'other-patient', familyId: 'other-family' })
+  const currentKey = careScopedKey(COMMUNICATION_STORAGE_KEYS.missingTokens)
+  expect(currentKey).not.toBe(originalKey)
+  h.values.set(currentKey, JSON.stringify([{ suggestedPictograms: [{ image: 'wxfile://saved/current.png' }] }]))
+  const before = [...h.values]
+  expect(imageIsInUse('wxfile://saved/original.png')).toBe(true)
+  expect(imageIsInUse('wxfile://saved/current.png')).toBe(true)
+  expect(imageIsInUse('wxfile://saved/uncommitted.png')).toBe(false)
+  expect([...h.values]).toEqual(before)
+})
+
+test.each(['{malformed', '{}', false, 0])('cache rollback refuses to infer no references from invalid storage: %s', stored => {
+  const imageIsInUse = captureMissingTokenImageUsage()
+  h.values.set(careScopedKey(COMMUNICATION_STORAGE_KEYS.missingTokens), stored)
+  expect(() => imageIsInUse('wxfile://saved/uncommitted.png')).toThrow()
 })

@@ -29,6 +29,7 @@ describe('release evidence', () => {
       releaseChannel: 'production',
       cloudFeatures: false,
       aiFeatures: false,
+      textAiFeatures: false,
       ocr: false,
       onlinePictograms: false,
       dialectAsr: false,
@@ -88,7 +89,7 @@ APP_SECRET=must-not-appear
     const envFileSettings = parseSafeProductionSettings('TARO_APP_ENABLE_CLOUD_FEATURES=false\nTARO_APP_ENABLE_AI_FEATURES=false')
     const inspected = inspectBuiltFeatureManifest(root, 'revision-1')
 
-    expect(RELEASE_CAPABILITY_KEYS).toHaveLength(9)
+    expect(RELEASE_CAPABILITY_KEYS).toHaveLength(10)
     expect(inspected.valid).toBe(true)
     expect(inspected.capabilities).toMatchObject({ cloudFeatures: true, aiFeatures: true })
     expect(envFileSettings).toMatchObject({

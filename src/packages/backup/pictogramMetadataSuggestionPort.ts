@@ -68,8 +68,12 @@ export function createPictogramMetadataSuggestionPort(
     configured,
 
     async suggest(
-      sourceFilePath: string
+      sourceFilePath: string,
+      privacy: { personalPerson?: boolean } = {}
     ): Promise<PictogramMetadataSuggestionResult> {
+      if (privacy.personalPerson) {
+        return { ok: false, message: '人物照片不发送给视觉模型，请手工填写全名。' }
+      }
       if (!configured) {
         return {
           ok: false,

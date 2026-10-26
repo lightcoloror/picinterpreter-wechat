@@ -71,7 +71,7 @@ describe('WeChat communication repository migration', () => {
       })
     )
     expect(
-      JSON.parse(String(values.get('cboard_communication_saved_phrases')))
+      JSON.parse(String(values.get('cboard_communication_favorite_state_v1'))).phrases
     ).toEqual([
       expect.objectContaining({
         id: expect.stringMatching(/^phrase_/),

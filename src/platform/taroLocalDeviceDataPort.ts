@@ -1,4 +1,10 @@
+import { isFavoriteLocalFileName } from './favoriteLocalFileStorage'
+import { createTaroFavoriteLocalFileStorage } from './taroFavoriteLocalFileStorage'
 import Taro from '@tarojs/taro'
+import { isExpressionLocalFileName } from './expressionLocalFileStorage'
+import { createTaroExpressionLocalFileStorage } from './taroExpressionLocalFileStorage'
+import { createTaroReceiverLocalFileStorage } from './taroReceiverLocalFileStorage'
+import { isReceiverLocalFileName } from './receiverLocalFileStorage'
 
 import {
   createLocalDeviceDataPort,
@@ -55,7 +61,7 @@ function listGeneratedFiles() {
       success: result =>
         resolve(
           result.files
-            .filter(isGeneratedLocalDataFileName)
+            .filter(name => isGeneratedLocalDataFileName(name) && !isExpressionLocalFileName(name) && !isReceiverLocalFileName(name) && !isFavoriteLocalFileName(name))
             .map(name => userDataPath + '/' + name)
         ),
       fail: error => {
@@ -88,10 +94,18 @@ function removePictureLibraryRoot() {
 }
 
 export const taroLocalDeviceDataPort = createLocalDeviceDataPort({
+  clearExpressionState: async () => {
+    createTaroExpressionLocalFileStorage().clearAllScopes()
+    createTaroReceiverLocalFileStorage().clearAllScopes()
+    createTaroFavoriteLocalFileStorage().clearAllScopes()
+  },
   removeFile,
   listSavedFiles: async () => {
     const result = await Taro.getSavedFileList()
-    return result.fileList.map(item => item.filePath)
+    return result.fileList.map(item => item.filePath).filter(path =>
+      !isExpressionLocalFileName(path.slice(path.lastIndexOf('/') + 1)) &&
+      !isReceiverLocalFileName(path.slice(path.lastIndexOf('/') + 1)) &&
+      !isFavoriteLocalFileName(path.slice(path.lastIndexOf('/') + 1)))
   },
   listGeneratedFiles,
   removePictureLibraryRoot,

@@ -29,7 +29,7 @@ export default function PhrasePlaybackOverlay({
       className='phrase-playback-overlay'
       catchMove
       ariaRole='dialog'
-      ariaLabel='常用语全屏播报'
+      ariaLabel='常用语整句'
     >
       <ScrollView scrollY className='phrase-playback-overlay__scroll'>
         <View className='phrase-playback-overlay__card'>
@@ -47,10 +47,10 @@ export default function PhrasePlaybackOverlay({
                       label={tile.label}
                       mediaType={tile.mediaType}
                       video={tile.video}
-                      videoAutoplay={tile.mediaType === 'video'}
+                      videoAutoplay={false}
                     />
                   ) : (
-                    <Text className='phrase-playback-overlay__missing'>?</Text>
+                    <Text className='phrase-playback-overlay__missing'>图片不可用，保留文字</Text>
                   )}
                   <Text className='phrase-playback-overlay__label'>
                     {tile.label}
@@ -72,7 +72,7 @@ export default function PhrasePlaybackOverlay({
               className='phrase-playback-overlay__replay'
               disabled={isSpeaking}
               onClick={() => void onReplay()}
-              label={isSpeaking ? '播报中' : '重播'}
+              label={isSpeaking ? '播报中' : '播报整句'}
               ariaLabel={isSpeaking ? '正在播报常用语' : '重新播报常用语'}
             />
             <PatientActionButton
@@ -80,8 +80,8 @@ export default function PhrasePlaybackOverlay({
               id='phrase-playback-close'
               className='phrase-playback-overlay__close'
               onClick={onClose}
-              label='完成'
-              ariaLabel='完成并返回患者表达'
+              label='返回'
+              ariaLabel='返回'
             />
           </View>
         </View>

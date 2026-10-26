@@ -1,3 +1,4 @@
+import { clearSavedPhraseUndoSession } from '@cboard-communication-core/savedPhraseUse'
 import { useReducer, useRef, useState } from 'react'
 import { isCareSharedPhrase } from '@cboard-communication-core/careSharedPhrases'
 import { Button, Text, View } from '@tarojs/components'
@@ -16,12 +17,18 @@ import type {
 } from '@cboard-communication-core/conversationSession'
 import type { BoardDTO } from '@cboard-communication-core/dto'
 import type { ExpressionSavedPhraseEntry } from '@cboard-communication-core/expressionPipeline'
+import {
+  createExpressionDraftService,
+  hasResumableExpressionDraft,
+  type ExpressionDraftRecord,
+  type ExpressionDraftService
+} from '@cboard-communication-core/expressionDraft'
 import type {
   CommunicationHistoryEntry,
   CommunicationSavedPhraseEntry
 } from '@cboard-communication-core/repository'
 import {
-  getCommunicationQuickPhrases,
+  addCommunicationSavedPhrase,
   markCommunicationSavedPhraseUsed
 } from '@cboard-communication-core/savedPhraseManagement'
 import {
@@ -29,14 +36,13 @@ import {
 } from '@cboard-communication-core/patientActionLanguage'
 import {
   applyPersonalImagePreferencesToBoards,
-  applyPersonalImagePreferencesToItems,
   type PersonalImagePreference
 } from '@cboard-communication-core/personalImagePreferences'
 import type {
   PictogramOrderingState
 } from '@cboard-communication-core/pictogramOrdering'
 import type { CboardAccountSession } from '../../platform/cboardAccountPort'
-import { canEditCareLibrary } from '../../platform/taroCareContext'
+import { canEditCareLibrary, careScopedKey } from '../../platform/taroCareContext'
 import { useCareRefresh, loadCareSharedPhrases } from '../../platform/taroCareWorkspace'
 import { taroCboardSessionStore } from '../../platform/taroCboardAccountPort'
 import { taroCommunicationNavigationIntent } from '../../platform/taroCommunicationNavigationIntent'
@@ -49,10 +55,10 @@ import ExpressionWorkspace from './ExpressionWorkspace'
 import NetworkStatusNotice from './NetworkStatusNotice'
 import PatientActionButton from './PatientActionButton'
 import {
+  createExpressionSession,
+  createExpressionSessionFromDraft,
   createExpressionSessionFromSavedPhrase,
-  createExpressionSessionFromTileReferences,
   expressionSessionReducer,
-  restoreExpressionSession,
   type ExpressionSessionState
 } from './session'
 import './CommunicationPage.css'
@@ -68,8 +74,60 @@ function createPersonalImageSignature(
     .join('|')
 }
 
+const readExpressionStorageError = () => {
+  try {
+    const repository = createTaroCommunicationRepository()
+    repository.loadCommunicationIdentity()
+    repository.loadCommunicationHistory()
+    repository.loadExpressionDraft()
+    return ''
+  } catch (_) {
+    return '本机表达草稿暂时无法读取。原数据已保留，请重试；不会改用旧草稿。'
+  }
+}
+
 export default function CommunicationPage() {
+  // A corrupt/unreadable authoritative file must not open an empty writer or
+  // fall back to an older settings-cache draft. Retry the same storage path.
+  const [storageError, setStorageError] = useState(readExpressionStorageError)
+  if (storageError) return <View className='communication-page'>
+    <View className='panel'>
+      <Text id='expression-storage-read-error'>{storageError}</Text>
+      <Button id='expression-storage-retry-read' onClick={() => setStorageError(readExpressionStorageError())}>重试读取草稿</Button>
+    </View>
+  </View>
+  return <CommunicationPageWorkspace />
+}
+
+function CommunicationPageWorkspace() {
   const repositoryRef = useRef(createTaroCommunicationRepository())
+  const expressionScopeRef = useRef(careScopedKey('expression'))
+  const draftServiceRef = useRef<ExpressionDraftService | null>(null)
+  const initialDraftRef = useRef<{
+    record: ExpressionDraftRecord | null
+    error: string
+  } | null>(null)
+  if (!draftServiceRef.current) {
+    draftServiceRef.current = createExpressionDraftService({
+      repository: repositoryRef.current,
+      getScopeKey: () => careScopedKey('expression')
+    })
+    try {
+      initialDraftRef.current = { record: draftServiceRef.current.load(), error: '' }
+    } catch (error) {
+      initialDraftRef.current = {
+        record: null, error: error instanceof Error ? error.message : '草稿暂时无法读取，原数据已保留。'
+      }
+    }
+  }
+  const [pendingDraft, setPendingDraft] = useState(
+    hasResumableExpressionDraft(initialDraftRef.current!.record)
+      ? initialDraftRef.current!.record : null
+  )
+  const [draftReadError, setDraftReadError] = useState(initialDraftRef.current!.error)
+  const [draftDeferred, setDraftDeferred] = useState(false)
+  const [restoredDraft, setRestoredDraft] = useState<ExpressionDraftRecord | null>(null)
+  const [workspaceRevision, setWorkspaceRevision] = useState(0)
   const communicationIdentityRef = useRef<{
     patientId: string
     workspaceId: string
@@ -93,13 +151,6 @@ export default function CommunicationPage() {
     initialPersonalImagePreferencesRef.current =
       repositoryRef.current.loadPersonalImagePreferences()
   }
-  const initialPersonalizedBoardsRef = useRef(
-    applyPersonalImagePreferencesToBoards(
-      initialLibraryBoardsRef.current,
-      initialPersonalImagePreferencesRef.current,
-      communicationIdentity
-    )
-  )
   const initialPreferencesRef = useRef<CommunicationPreferences | null>(null)
   if (!initialPreferencesRef.current) {
     initialPreferencesRef.current = taroCommunicationPreferencesStore.load()
@@ -136,11 +187,9 @@ export default function CommunicationPage() {
 
   const initialSessionRef = useRef<ExpressionSessionState | null>(null)
   if (!initialSessionRef.current) {
-    initialSessionRef.current = restoreExpressionSession(
-      initialPersonalizedBoardsRef.current,
-      initialHistoryRef.current,
-      initialConversationSessionRef.current.id
-    )
+    // Confirmed history is not unfinished work. Draft/cleared/confirmed markers
+    // all take precedence, and nothing is restored before the user's choice.
+    initialSessionRef.current = createExpressionSession()
   }
 
   const [expressionSession, expressionDispatch] = useReducer(
@@ -181,7 +230,6 @@ export default function CommunicationPage() {
   const [libraryBoards, setLibraryBoards] = useState(
     initialLibraryBoardsRef.current
   )
-  const [libraryRevision, setLibraryRevision] = useState(0)
   const personalizedBoards = applyPersonalImagePreferencesToBoards(
     libraryBoards,
     personalImagePreferences,
@@ -194,9 +242,6 @@ export default function CommunicationPage() {
   const communicationBoards = visibleBoards.length
     ? visibleBoards
     : personalizedBoards
-  const personalImageSignature = createPersonalImageSignature(
-    personalImagePreferences
-  )
   const pageClassName = [
     'communication-page',
     preferences.highContrast ? 'communication-page--high-contrast' : '',
@@ -221,18 +266,57 @@ export default function CommunicationPage() {
     )
   }
 
+  const loadedPhraseRef = useRef('')
   const reusePhrase = (
     entry: CommunicationSavedPhraseEntry,
     boards: BoardDTO[] = personalizedBoards
   ) => {
+    // A management navigation must not silently replace the deferred draft.
+    if (pendingDraft || draftReadError) {
+      setConversationNotice('请先选择继续上次表达，或明确开始新表达，再载入常用语。')
+      return false
+    }
     const nextSession = createExpressionSessionFromSavedPhrase(
       boards,
       entry
     )
-    if (!nextSession.selectedTiles.length) return false
+    if (!nextSession.pipeline.candidateSentences.length) return false
 
-    markPhraseUsed(entry)
+    const key = JSON.stringify([entry.id, entry.sentence, entry.output])
+    const current = expressionSessionRef.current
+    const startsNewExpression = draftServiceRef.current!.getCurrent()?.status === 'confirmed'
+    if (!startsNewExpression && loadedPhraseRef.current === key &&
+        current.pipeline.candidateSentences[0] === entry.sentence &&
+        JSON.stringify(current.selectedTiles) === JSON.stringify(nextSession.selectedTiles)) return true
+    if (startsNewExpression) {
+      try {
+        // Both management and quick reuse must finish the old confirmation.
+        // Persist the new reviewed snapshot before changing the visible session.
+        draftServiceRef.current!.save({
+          pipeline: nextSession.pipeline,
+          rejected: false,
+          candidateFeedbackEntries: [],
+          pendingAi: null
+        }, { startNew: true })
+      } catch (error) {
+        setConversationNotice('新表达暂时未能保存到本机，原内容已保留，请重试载入。')
+        return false
+      }
+    }
+    try {
+      markPhraseUsed(entry)
+    } catch (error) {
+      // Usage is ancillary: its failure must not leave the UI on the completed
+      // expression after a new draft has already been reliably saved.
+      setConversationNotice('常用语已载入，使用次数暂时未能更新。')
+    }
+    loadedPhraseRef.current = key
+    expressionSessionRef.current = nextSession
     expressionDispatch({ type: 'replace-session', state: nextSession })
+    if (startsNewExpression) {
+      setRestoredDraft(null)
+      setWorkspaceRevision(value => value + 1)
+    }
     return true
   }
 
@@ -247,12 +331,8 @@ export default function CommunicationPage() {
   const openManagementPage = (
     view: 'phrases' | 'history' | 'settings' | 'diagnostics'
   ) => {
-    taroCommunicationNavigationIntent.save({
-      expressionDraft: expressionSession.selectedTiles.map(tile => ({
-        id: tile.id,
-        boardId: tile.boardId
-      }))
-    })
+    // navigateTo keeps this workspace alive. Its ordered snapshot and candidate
+    // state must not be replaced by an ID-only navigation intent on return.
     void Taro.navigateTo({
       url: `/packages/management/pages/index/index?view=${view}`
     }).catch(() => {
@@ -261,15 +341,58 @@ export default function CommunicationPage() {
   }
 
   const refreshCareWorkspace = () => {
+    const nextScope = careScopedKey('expression')
+    const scopeChanged = nextScope !== expressionScopeRef.current
+    if (!scopeChanged && draftServiceRef.current!.getCurrent()) {
+      try {
+        if (!repositoryRef.current.loadExpressionDraft()) {
+          // The explicit private-data purge removes drafts. Drop the suspended
+          // in-memory workspace too, rather than resurrecting cleared photos.
+          draftServiceRef.current = createExpressionDraftService({
+            repository: repositoryRef.current,
+            getScopeKey: () => careScopedKey('expression')
+          })
+          draftServiceRef.current.load()
+          expressionSessionRef.current = createExpressionSession()
+          expressionDispatch({ type: 'reset' })
+          setPendingDraft(null)
+          setRestoredDraft(null)
+          setDraftReadError('')
+          setWorkspaceRevision(value => value + 1)
+        }
+      } catch (error) {
+        setConversationNotice('草稿读取暂时失败，当前表达仍保留；请重试保存。')
+      }
+    }
+    if (scopeChanged) {
+      clearSavedPhraseUndoSession()
+      loadedPhraseRef.current = ''
+      expressionScopeRef.current = nextScope
+      expressionSessionRef.current = createExpressionSession()
+      expressionDispatch({ type: 'reset' })
+      communicationIdentityRef.current = repositoryRef.current.loadCommunicationIdentity()
+      draftServiceRef.current = createExpressionDraftService({
+        repository: repositoryRef.current,
+        getScopeKey: () => careScopedKey('expression')
+      })
+      setRestoredDraft(null)
+      setDraftDeferred(false)
+      setWorkspaceRevision(value => value + 1)
+      try {
+        const record = draftServiceRef.current.load()
+        setPendingDraft(hasResumableExpressionDraft(record) ? record : null)
+        setDraftReadError('')
+      } catch (error) {
+        setPendingDraft(null)
+        setDraftReadError(error instanceof Error ? error.message : '草稿暂时无法读取，原数据已保留。')
+      }
+    }
+    const nextIdentity = communicationIdentityRef.current!
     setCanEditLibrary(canEditCareLibrary())
     const nextConversation =
       repositoryRef.current.getActiveConversationSession()
-    setConversationSession(current => {
-      if (current.id !== nextConversation.id) {
-        expressionDispatch({ type: 'clear' })
-      }
-      return nextConversation
-    })
+    // Expiring AI conversation context must not erase human work.
+    setConversationSession(nextConversation)
     setHistoryItems(repositoryRef.current.loadCommunicationHistory())
     const nextSavedPhrases =
       repositoryRef.current.loadCommunicationSavedPhrases()
@@ -281,36 +404,11 @@ export default function CommunicationPage() {
     const nextPersonalizedBoards = applyPersonalImagePreferencesToBoards(
       nextLibraryBoards,
       nextPersonalImagePreferences,
-      communicationIdentity
+      nextIdentity
     )
     const nextPersonalImageSignature = createPersonalImageSignature(
       nextPersonalImagePreferences
     )
-    if (
-      nextPersonalImageSignature !==
-      personalImageSignatureRef.current
-    ) {
-      const currentExpressionSession = expressionSessionRef.current
-      expressionDispatch({
-        type: 'replace-session',
-        state: {
-          ...currentExpressionSession,
-          selectedTiles: applyPersonalImagePreferencesToItems(
-            currentExpressionSession.selectedTiles,
-            nextPersonalImagePreferences,
-            communicationIdentity
-          ),
-          pipeline: {
-            ...currentExpressionSession.pipeline,
-            outputSnapshot: applyPersonalImagePreferencesToItems(
-              currentExpressionSession.pipeline.outputSnapshot,
-              nextPersonalImagePreferences,
-              communicationIdentity
-            )
-          }
-        }
-      })
-    }
     personalImageSignatureRef.current =
       nextPersonalImageSignature
     setPersonalImagePreferences(nextPersonalImagePreferences)
@@ -318,8 +416,6 @@ export default function CommunicationPage() {
     const nextLibraryVersion = JSON.stringify(nextLibraryBoards)
     if (nextLibraryVersion !== libraryVersionRef.current) {
       libraryVersionRef.current = nextLibraryVersion
-      setLibraryRevision(value => value + 1)
-      expressionDispatch({ type: 'clear' })
     }
     const nextPreferences = taroCommunicationPreferencesStore.load()
     setPreferences(nextPreferences)
@@ -344,14 +440,6 @@ export default function CommunicationPage() {
       if (!savedPhrase || !reusePhrase(savedPhrase, nextPersonalizedBoards)) {
         setConversationNotice('这条常用语暂时无法恢复，请重新选择。')
       }
-    } else if (navigationIntent && navigationIntent.expressionDraft) {
-      const draftSession = createExpressionSessionFromTileReferences(
-        nextPersonalizedBoards,
-        navigationIntent.expressionDraft
-      )
-      if (draftSession.selectedTiles.length) {
-        expressionDispatch({ type: 'replace-session', state: draftSession })
-      }
     }
     if (navigationIntent && navigationIntent.showCaregiverTools) {
       setShowCaregiverTools(true)
@@ -362,8 +450,21 @@ export default function CommunicationPage() {
 
   const appendHistory = (entry: CommunicationHistoryEntry) => {
     try {
-      const persisted =
-        repositoryRef.current.appendCommunicationHistory(entry)
+      const confirmedId = draftServiceRef.current!.getCurrent()?.confirmedRecordId
+      // The existing thumbs-feedback operation may update feedback on a
+      // confirmed record, but cannot use this path to replace its expression.
+      if (entry.id && entry.id === confirmedId) {
+        const previous = repositoryRef.current.loadCommunicationHistory()
+          .find(item => item.id === confirmedId)
+        if (!previous || previous.sentence !== entry.sentence ||
+            JSON.stringify(previous.output) !== JSON.stringify(entry.output)) return null
+        const persisted = repositoryRef.current.appendCommunicationHistory({
+          ...previous, candidates: entry.candidates
+        })
+        setHistoryItems(repositoryRef.current.loadCommunicationHistory())
+        return persisted
+      }
+      const persisted = draftServiceRef.current!.confirm(entry)
       setHistoryItems(repositoryRef.current.loadCommunicationHistory())
       return persisted
     } catch (error) {
@@ -375,6 +476,7 @@ export default function CommunicationPage() {
     id?: string
     outputSignature: string
     candidates: ExpressionCandidate[]
+    rejected?: boolean
   }): ExpressionCandidateFeedbackDraft | null => {
     try {
       return repositoryRef.current.saveExpressionCandidateFeedbackDraft(
@@ -396,15 +498,17 @@ export default function CommunicationPage() {
   }
 
   const savePhrase = (entry: ExpressionSavedPhraseEntry) => {
-    try {
-      repositoryRef.current.saveCommunicationPhrase(entry)
-      setSavedPhraseItems(
-        repositoryRef.current.loadCommunicationSavedPhrases()
-      )
-      return true
-    } catch (error) {
-      return false
-    }
+    // The workspace presents the repository's precise capacity/persistence
+    // failure and keeps the expression available for an explicit retry.
+    const repository = repositoryRef.current
+    const current = repository.loadCommunicationSavedPhrases()
+    const result = addCommunicationSavedPhrase(current, { ...entry })
+    if (!result.item) throw new Error('这句话没有可收藏的内容。')
+    if (result.changed) repository.overwriteCommunicationSavedPhrases(result.items, { expectedPhrases: current })
+    setSavedPhraseItems(
+      repositoryRef.current.loadCommunicationSavedPhrases()
+    )
+    return true
   }
 
   const updatePreferences = (value: CommunicationPreferences) => {
@@ -422,6 +526,50 @@ export default function CommunicationPage() {
     setShowOnboarding(false)
   }
 
+  const retryDraftRead = () => {
+    try {
+      const record = draftServiceRef.current!.load()
+      setPendingDraft(hasResumableExpressionDraft(record) ? record : null)
+      setDraftReadError('')
+      setDraftDeferred(false)
+    } catch (error) {
+      setDraftReadError(error instanceof Error ? error.message : '草稿读取失败，请重试。')
+    }
+  }
+
+  const continueDraft = () => {
+    if (!pendingDraft) return
+    const nextSession = createExpressionSessionFromDraft(pendingDraft.snapshot)
+    expressionSessionRef.current = nextSession
+    expressionDispatch({ type: 'replace-session', state: nextSession })
+    setRestoredDraft(pendingDraft)
+    setPendingDraft(null)
+    setDraftDeferred(false)
+    setWorkspaceRevision(value => value + 1)
+  }
+
+  const discardPendingDraft = async () => {
+    const scope = expressionScopeRef.current
+    const confirmation = await Taro.showModal({
+      title: '开始新表达',
+      content: '将丢弃这份未完成表达。图库、收藏和历史保留；丢弃不代表取消已发出的 AI 请求或退款。',
+      confirmText: '丢弃并开始',
+      cancelText: '保留草稿'
+    })
+    if (!confirmation.confirm || scope !== careScopedKey('expression')) return
+    try {
+      draftServiceRef.current!.discard()
+      setPendingDraft(null)
+      setRestoredDraft(null)
+      setDraftDeferred(false)
+      expressionSessionRef.current = createExpressionSession()
+      expressionDispatch({ type: 'reset' })
+      setWorkspaceRevision(value => value + 1)
+    } catch (error) {
+      setDraftReadError(error instanceof Error ? error.message : '草稿未能清除，请重试。')
+    }
+  }
+
   const startNewConversation = async () => {
     const confirmation = await Taro.showModal({
       title: '开始新对话',
@@ -435,7 +583,7 @@ export default function CommunicationPage() {
       const nextSession = repositoryRef.current.resetConversationSession()
       setConversationSession(nextSession)
       setConversationNotice('新对话已开始，原有历史仍会保留。')
-      expressionDispatch({ type: 'clear' })
+      // New dialogue only expires model context; unfinished expression remains.
     } catch (error) {
       setConversationNotice('暂时无法开始新对话，请稍后重试。')
     }
@@ -570,12 +718,39 @@ export default function CommunicationPage() {
         </View>
       )}
 
-      <ExpressionWorkspace
-        key={`express-${conversationSession.id}-${libraryRevision}-${preferences.hiddenBoardIds.join('-')}-${personalImageSignature}`}
+      {(pendingDraft || draftReadError) && (
+        <View className='panel expression-draft-recovery' id='expression-draft-recovery'>
+          <Text className='section-heading__title'>
+            {draftReadError ? '表达草稿暂时不可用' : '上次表达尚未完成'}
+          </Text>
+          {draftReadError ? (
+            <>
+              <Text>{draftReadError}</Text>
+              <Button id='expression-draft-retry-read-button' onClick={retryDraftRead}>重新读取</Button>
+            </>
+          ) : pendingDraft && (
+            <>
+              {!draftDeferred && <>
+                <Text>{pendingDraft.snapshot.pipeline.candidateSentences[pendingDraft.snapshot.pipeline.selectedIndex] ||
+                  pendingDraft.snapshot.pipeline.outputSnapshot.map(tile => tile.label).join(' / ')}</Text>
+                <Text>保存时间：{new Date(pendingDraft.updatedAt).toLocaleString()}</Text>
+                <Text>继续不会自动播报、搜图或调用 AI。</Text>
+              </>}
+              <Button id='expression-draft-continue-button' onClick={continueDraft}>继续上次表达</Button>
+              <Button id='expression-draft-new-button' onClick={() => void discardPendingDraft()}>开始新表达</Button>
+              {!draftDeferred && <Button id='expression-draft-defer-button' onClick={() => setDraftDeferred(true)}>暂不处理</Button>}
+              {draftDeferred && <Text>草稿仍保留。开始编辑前请选择继续或开始新表达。</Text>}
+            </>
+          )}
+        </View>
+      )}
+
+      {!pendingDraft && !draftReadError && <ExpressionWorkspace
+        key={`express-${expressionScopeRef.current}-${workspaceRevision}`}
         boards={communicationBoards}
         session={expressionSession}
         dispatch={expressionDispatch}
-        savedPhrases={[...getCommunicationQuickPhrases(savedPhraseItems, 6), ...sharedPhraseItems]}
+        savedPhrases={[...savedPhraseItems, ...sharedPhraseItems]}
         conversationContext={repositoryRef.current.loadConversationContext({
           sessionId: conversationSession.id,
           maxTurns: 6
@@ -598,6 +773,8 @@ export default function CommunicationPage() {
         }
         pictogramSortMode={preferences.pictogramSortMode}
         pictogramOrdering={pictogramOrdering}
+        draftService={draftServiceRef.current!}
+        initialExpressionDraft={restoredDraft?.snapshot || null}
         onConfirm={appendHistory}
         onSaveCandidateFeedbackDraft={saveCandidateFeedbackDraft}
         onDiscardCandidateFeedbackDraft={discardCandidateFeedbackDraft}
@@ -605,7 +782,7 @@ export default function CommunicationPage() {
         onReusePhrase={reusePhrase}
         onUseSavedPhrase={markPhraseUsed}
         onPictogramUsed={recordPictogramUse}
-      />
+      />}
 
       <View className='history-summary'>
         <Text className='history-summary__title'>最近沟通</Text>

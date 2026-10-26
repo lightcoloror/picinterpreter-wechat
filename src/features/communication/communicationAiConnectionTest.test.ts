@@ -80,8 +80,9 @@ describe('communication AI connection test', () => {
 
       await expect(resultPromise).resolves.toEqual({
         ok: false,
+        code: 'AI_REQUEST_RESULT_UNKNOWN',
         message:
-          'AI 真实连接测试等待超过 10 秒，请检查网络或服务商。本地沟通仍可正常使用。'
+          '暂未收到 AI 的确定结果。再次点击会核对同一请求，不会另建请求重复调用或扣费；本地结果仍保留。'
       })
     } finally {
       vi.useRealTimers()

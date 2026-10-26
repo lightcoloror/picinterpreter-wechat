@@ -40,6 +40,7 @@ const enabledManifest = {
   careCollaboration: true,
   cloudFeatures: true,
   aiFeatures: true,
+  textAiFeatures: true,
   ocr: true,
   onlinePictograms: true,
   dialectAsr: true,
@@ -51,7 +52,7 @@ describe('formal release readiness gate', () => {
   const offlineManifest = {
     ...enabledManifest,
     releaseChannel: 'production', apiBaseUrl: '',
-    cloudFeatures: false, aiFeatures: false, ocr: false,
+    cloudFeatures: false, aiFeatures: false, textAiFeatures: false, ocr: false,
     onlinePictograms: false, dialectAsr: false,
     careCollaboration: false, accountClosure: false, publicTrial: false
   }
@@ -67,7 +68,7 @@ describe('formal release readiness gate', () => {
     expect(evaluateReleaseReadiness({ ...offlineConfig, coreRealDeviceAcceptanceConfirmed: false }, offlineManifest).ready).toBe(false)
     expect(evaluateReleaseReadiness({ ...offlineConfig, filingNumber: '' }, offlineManifest).ready).toBe(false)
   })
-  test.each(['cloudFeatures', 'aiFeatures', 'ocr', 'dialectAsr'])('requires the configured API and network acceptance when %s is present in the artifact', field => {
+  test.each(['cloudFeatures', 'aiFeatures', 'textAiFeatures', 'ocr', 'dialectAsr'])('requires the configured API and network acceptance when %s is present in the artifact', field => {
     const result = evaluateReleaseReadiness(offlineConfig, { ...offlineManifest, [field]: true })
     expect(result.issues).toContain('正式 cboard-api 必须使用公众可访问的 HTTPS 域名。')
     expect(result.issues).toContain('尚未完成正式后端、真实账号和真实网络下的手机验收。')

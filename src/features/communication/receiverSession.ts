@@ -57,6 +57,8 @@ interface ReceiverSessionOptions {
 const EMPTY_QUALITY: ReceiverMatchQuality = {
   totalCount: 0,
   matchedCount: 0,
+  imageCount: 0,
+  textOnlyCount: 0,
   missingCount: 0,
   partialCount: 0,
   matchRate: 0,
@@ -77,6 +79,9 @@ export interface ReceiverWorkspaceResumeState {
   activeDraft: ReceiverDraftEntry | null
   learnFromCorrections: boolean
   notice: string
+  repairRequested?: boolean
+  repairSource?: ReceiverDraftEntry | null
+  repairEditing?: boolean
 }
 
 export interface ReceiverDisplayCloseResult {
@@ -134,6 +139,9 @@ export function createReceiverWorkspaceResumeState(
       outputPreview: value.session.outputPreview.slice(),
       quality: { ...value.session.quality }
     },
+    repairRequested: value.repairRequested,
+    repairSource: value.repairSource,
+    repairEditing: value.repairEditing,
     segmentationDraft: String(value.segmentationDraft || ''),
     activeDraft: value.activeDraft,
     learnFromCorrections: Boolean(value.learnFromCorrections),
@@ -158,7 +166,7 @@ export function restoreReceiverWorkspaceFromRecord(
     reviewItems: restored.reviewItems.slice(),
     outputPreview: restored.outputPreview.slice(),
     quality: buildReceiverMatchQuality(restored.reviewItems),
-    matched: true
+    matched: restored.reviewItems.length > 0
   }
 
   return createReceiverWorkspaceResumeState({
@@ -191,6 +199,11 @@ export function resumeReceiverWorkspaceAfterDisplay(
 
   return {
     ...createReceiverWorkspaceResumeState(state),
+    ...(result.feedback === 'not_understood' ? {
+      repairRequested: true, repairSource: state.activeDraft, repairEditing: false
+    } : result.feedback === 'understood' ? {
+      repairRequested: false, repairSource: null, repairEditing: false
+    } : {}),
     notice
   }
 }
@@ -294,7 +307,7 @@ export function refreshReceiverMissingItems(
   missingTokenRecords: MissingTokenRecord[],
   correctionMemory?: ReceiverCorrectionMemory
 ): ReceiverSessionState {
-  if (!state.matched || !state.quality.missingCount) {
+  if (!state.matched || (!state.quality.missingCount && !state.quality.partialCount)) {
     return state
   }
 

@@ -15,16 +15,36 @@ type CanvasExportOptions = Parameters<
   typeof Taro.canvasToTempFilePath
 >[0]
 
-function loadCanvasImage(canvas: ShareCanvas, source: string) {
+function loadCanvasImage(canvas: ShareCanvas, source: string, isCurrent: () => boolean) {
+  if (!isCurrent()) return Promise.reject(new Error('cancelled'))
   return new Promise<unknown>((resolve, reject) => {
     const image = canvas.createImage()
-    image.onload = () => resolve(image)
-    image.onerror = reject
-    image.src = source
+    let settled = false
+    const finish = (error?: unknown) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      image.onload = () => {}
+      image.onerror = () => {}
+      if (error || !isCurrent()) reject(error || new Error('cancelled'))
+      else resolve(image)
+    }
+    const timer = setTimeout(() => finish(new Error('Image load timed out')), 10000)
+    image.onload = () => finish()
+    image.onerror = error => finish(error || new Error('Image load failed'))
+    try {
+      image.src = source
+    } catch (error) {
+      finish(error)
+    }
   })
 }
 
-async function renderReceiverImage(document: ReceiverShareDocument) {
+async function renderReceiverImage(
+  document: ReceiverShareDocument,
+  { isCurrent }: { isCurrent: () => boolean }
+) {
+  if (!isCurrent()) throw new Error('cancelled')
   const layout = buildReceiverShareLayout(document)
   if (!layout) throw new TypeError('Receiver share layout is empty')
 
@@ -37,8 +57,9 @@ async function renderReceiverImage(document: ReceiverShareDocument) {
   const rendered = await renderReceiverShareLayout(
     context,
     layout,
-    source => loadCanvasImage(canvas, source)
+    source => loadCanvasImage(canvas, source, isCurrent)
   )
+  if (!isCurrent()) throw new Error('cancelled')
   const exported = await Taro.canvasToTempFilePath({
     canvas: canvas as unknown as CanvasExportOptions['canvas'],
     fileType: 'png',
@@ -65,5 +86,12 @@ export const taroCommunicationSharePort =
     renderReceiverImage,
     shareImage: async path => {
       await Taro.showShareImageMenu({ path })
-    }
+    },
+    discardReceiverImage: path => new Promise(resolve => {
+      Taro.getFileSystemManager().unlink({
+        filePath: path,
+        success: () => resolve(),
+        fail: () => resolve()
+      })
+    })
   })

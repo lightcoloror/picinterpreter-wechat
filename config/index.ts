@@ -50,6 +50,7 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
     apiBaseUrl: envValue('TARO_APP_API_BASE_URL'),
     enableCloudFeatures: envValue('TARO_APP_ENABLE_CLOUD_FEATURES'),
     enableAiFeatures: envValue('TARO_APP_ENABLE_AI_FEATURES'),
+    enableTextAiFeatures: envValue('TARO_APP_ENABLE_TEXT_AI_FEATURES'),
     enableOcr: envValue('TARO_APP_ENABLE_OCR'),
     enableOnlinePictograms: envValue('TARO_APP_ENABLE_ONLINE_PICTOGRAMS'),
     enableDialectAsr: envValue('TARO_APP_ENABLE_DIALECT_ASR')
@@ -99,6 +100,9 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
       ),
       'process.env.TARO_APP_ENABLE_AI_FEATURES': JSON.stringify(
         process.env.TARO_APP_ENABLE_AI_FEATURES || ''
+      ),
+      'process.env.TARO_APP_ENABLE_TEXT_AI_FEATURES': JSON.stringify(
+        envValue('TARO_APP_ENABLE_TEXT_AI_FEATURES')
       ),
       'process.env.TARO_APP_ENABLE_OCR': JSON.stringify(
         process.env.TARO_APP_ENABLE_OCR || ''
@@ -152,7 +156,8 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
         chain.plugin('release-feature-manifest').use(ReleaseFeatureManifestPlugin, [releaseFlags])
         chain.resolve.plugin('tsconfig-paths').use(TsconfigPathsPlugin)
         chain.module.rule('care-shared-panel')
-          .test(/[Cc]are[^/\\]*\.js$/)
+          // This shared semantic module also contains syntax older WeChat cannot parse.
+          .test(/(?:[Cc]are[^/\\]*|pictogramSemantics)\.js$/)
           .include.add(path.resolve(__dirname, '../../cboard/src/common/communicationSupport')).end()
           .use('babel-loader').loader(require.resolve('babel-loader'))
           .options({ babelrc: false, configFile: false,

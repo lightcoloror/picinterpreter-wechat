@@ -1,6 +1,9 @@
-import { useRef, useState } from 'react'
+import { currentImageOperationEpoch } from '@cboard-communication-core/imageOperationEpoch'
+import { filterPublicPictureTokens } from '@cboard-communication-core/personalPeople'
+import { buildCommunicationTileCatalog } from '@cboard-communication-core/symbolMatching'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Text, View } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
+import Taro, { useDidHide, useDidShow } from '@tarojs/taro'
 import type { CommunicationPreferences } from '@cboard-communication-core/communicationPreferences'
 import {
   CONVERSATION_SCENES,
@@ -46,6 +49,8 @@ import type {
   MissingTokenReview
 } from '../../../../features/communication/MissingTokenQueue'
 import ReceiverWorkspace from '../../../../features/communication/ReceiverWorkspace'
+import SavedPhrasePreparation from '../../../../features/communication/SavedPhrasePreparation'
+import { wechatSpeechPort } from '../../../../platform/taroSpeechPort'
 import type {
   ImageTextRecognitionIntent
 } from '../../../../features/communication/imageTextRecognitionIntent'
@@ -70,15 +75,47 @@ import type { RuntimePictogram } from '../../../../platform/pictogramSearchPort'
 import { loadCommunicationBoards } from '../../../../platform/taroCommunicationBoards'
 import '../../../../features/communication/CommunicationPage.css'
 import { useCareRefresh } from '../../../../platform/taroCareWorkspace'
+import { careScopedKey } from '../../../../platform/taroCareContext'
+
+function getMissingTokenScopeKey() {
+  return JSON.stringify([
+    taroCboardSessionStore.load()?.user.id || null,
+    careScopedKey('missing-token-requests')
+  ])
+}
 
 interface ReceiverDisplayState {
   items: CommunicationOutputItem[]
   recordId: string
   speechText: string
   resumeState: ReceiverWorkspaceResumeState
+  startSegmented?: boolean
+  autoPlay?: boolean
 }
 
 export default function ReceiverPage() {
+  const readError = () => {
+    try {
+      const repository = createTaroCommunicationRepository()
+      repository.loadReceiverRecords()
+      repository.loadReceiverCorrections()
+      repository.loadSavedPhrasePreparation()
+      repository.loadResumableReceiverRecord()
+      return ''
+    } catch (_) {
+      return '本机接收或准备草稿暂时无法读取，原数据已保留；不会用旧内容覆盖。'
+    }
+  }
+  const [error, setError] = useState(readError)
+  if (error) return <View className='communication-page'><View className='panel'>
+    <Text id='receiver-storage-read-error'>{error}</Text>
+    <Button id='receiver-storage-retry-read' onClick={() => setError(readError())}>重试读取草稿</Button>
+  </View></View>
+  return <ReceiverPageWorkspace />
+}
+
+function ReceiverPageWorkspace() {
+  const preparationMode = Taro.getCurrentInstance().router?.params.prepare === '1'
   const repositoryRef = useRef(createTaroCommunicationRepository())
   const communicationIdentityRef = useRef<{
     patientId: string
@@ -130,8 +167,14 @@ export default function ReceiverPage() {
   const [missingTokenItems, setMissingTokenItems] = useState(
     initialMissingTokensRef.current
   )
-  const attemptedAutomaticMissingTokenIdsRef =
-    useRef(new Set<string>())
+  // Reuse the Web scope/version guard; per-record tickets also reject older
+  // searches and downloads when requests complete out of order.
+  const missingTokenRequestsRef = useRef(new Map<string, object>())
+  const missingTokenConfirmationsRef = useRef(new Set<string>())
+  const preparedMissingImagesRef = useRef(new Map<string, RuntimePictogram>())
+  const missingTokenScopeKey = getMissingTokenScopeKey()
+  useDidHide(() => missingTokenRequestsRef.current.clear())
+  useEffect(() => () => missingTokenRequestsRef.current.clear(), [])
 
   const initialReceiverCorrectionsRef = useRef<
     ReceiverCorrectionEntry[] | null
@@ -160,6 +203,7 @@ export default function ReceiverPage() {
     useState<ReceiverDisplayState | null>(null)
   const [, setCareRevision] = useState(0)
   useCareRefresh(() => {
+    missingTokenRequestsRef.current.clear()
     initialPreferencesRef.current = taroCommunicationPreferencesStore.load()
     initialLibraryBoardsRef.current = loadCommunicationBoards()
     initialPersonalImagePreferencesRef.current = repositoryRef.current.loadPersonalImagePreferences()
@@ -294,10 +338,10 @@ export default function ReceiverPage() {
     }
   }
 
-  const discardResumableReceiverRecord = (recordId: string) => {
+  const discardResumableReceiverRecord = (recordId: string, options?: { expected: ReceiverDraftEntry }) => {
     try {
       const discarded =
-        repositoryRef.current.discardResumableReceiverRecord(recordId)
+        repositoryRef.current.discardResumableReceiverRecord(recordId, options)
       setReceiverWorkspaceResumeState(current =>
         current &&
         current.activeDraft &&
@@ -378,6 +422,7 @@ export default function ReceiverPage() {
   }
 
   const reviewMissingToken = (recordId: string, review: MissingTokenReview) => {
+    if (missingTokenScopeKey !== getMissingTokenScopeKey()) return false
     try {
       const reviewed = repositoryRef.current.reviewMissingToken(recordId, review)
       setMissingTokenItems(repositoryRef.current.loadMissingTokens())
@@ -387,13 +432,31 @@ export default function ReceiverPage() {
     }
   }
 
+  const isMissingTokenRequestCurrent = (
+    record: MissingTokenRecord, ticket: object, snapshot: string
+  ) => {
+    if (missingTokenScopeKey !== getMissingTokenScopeKey() ||
+        missingTokenRequestsRef.current.get(record.id) !== ticket) return false
+    const current = repositoryRef.current.loadMissingTokens().find(item => item.id === record.id)
+    // Include the content as well as updatedAt: two user edits can share a millisecond.
+    return Boolean(current && JSON.stringify(current) === snapshot)
+  }
+
   const searchMissingTokensOnline = async (
     recordIds: string[]
   ): Promise<MissingTokenOnlineResult> => {
+    if (missingTokenScopeKey !== getMissingTokenScopeKey()) {
+      return { ok: false, message: '当前档案已切换，请重新打开补图列表。' }
+    }
     const requestedIds = new Set(recordIds)
     const records = repositoryRef.current
       .loadMissingTokens()
-      .filter(record => requestedIds.has(record.id) && record.status === 'new')
+      .filter(record => requestedIds.has(record.id) && ['new', 'suggested'].includes(record.status) &&
+        filterPublicPictureTokens([record.normalizedToken], buildCommunicationTileCatalog(communicationBoards)).length > 0)
+    if (!records.length) return { ok: false, message: '没有需要搜索的词。' }
+    const ticket = {}
+    const snapshots = new Map(records.map(record => [record.id, JSON.stringify(record)]))
+    records.forEach(record => missingTokenRequestsRef.current.set(record.id, ticket))
     const result = await taroPictogramSearchPort.search(
       records.map(record => record.normalizedToken)
     )
@@ -413,16 +476,20 @@ export default function ReceiverPage() {
         normalizeMissingTokenSuggestions([
           ...(suggestionsByToken.get(normalizedToken) || []),
           item.pictogram
-        ])
+        ], null, normalizedToken)
       )
     })
     let suggestionCount = 0
 
     records.forEach(record => {
+      if (!isMissingTokenRequestCurrent(record, ticket, snapshots.get(record.id)!)) return
       const suggestions = suggestionsByToken.get(
         record.normalizedToken.trim().toLocaleLowerCase()
       ) || []
-      if (!suggestions.length) return
+      if (!suggestions.length) {
+        if (record.status === 'suggested') repositoryRef.current.reviewMissingToken(record.id, { status: 'new' })
+        return
+      }
 
       repositoryRef.current.reviewMissingToken(record.id, {
         status: 'suggested',
@@ -434,7 +501,10 @@ export default function ReceiverPage() {
       suggestionCount += suggestions.length
     })
 
-    setMissingTokenItems(repositoryRef.current.loadMissingTokens())
+    if (missingTokenScopeKey === getMissingTokenScopeKey() &&
+        records.some(record => missingTokenRequestsRef.current.get(record.id) === ticket)) {
+      setMissingTokenItems(repositoryRef.current.loadMissingTokens())
+    }
     return {
       ok: true,
       message: suggestionCount
@@ -448,28 +518,8 @@ export default function ReceiverPage() {
       const next = repositoryRef.current.recordMissingTokens(entry)
       setMissingTokenItems(next)
 
-      if (
-        preferences.onlinePictogramSearchEnabled &&
-        taroPictogramSearchPort.configured
-      ) {
-        const recordIds = next
-          .filter(
-            record =>
-              record.status === 'new' &&
-              !attemptedAutomaticMissingTokenIdsRef.current.has(
-                record.id
-              )
-          )
-          .map(record => record.id)
-          .slice(0, 12)
-        recordIds.forEach(recordId =>
-          attemptedAutomaticMissingTokenIdsRef.current.add(recordId)
-        )
-        if (recordIds.length) {
-          void searchMissingTokensOnline(recordIds)
-        }
-      }
-
+      // Recording or restoring a gap is local work. The existing search button
+      // is the explicit network boundary, including when online search is enabled.
       return true
     } catch (error) {
       return false
@@ -480,6 +530,9 @@ export default function ReceiverPage() {
     recordId: string,
     pictogramId?: string
   ): Promise<MissingTokenOnlineResult> => {
+    if (missingTokenScopeKey !== getMissingTokenScopeKey()) {
+      return { ok: false, message: '当前档案已切换，请重新打开补图列表。' }
+    }
     const record = repositoryRef.current
       .loadMissingTokens()
       .find(item => item.id === recordId)
@@ -487,23 +540,62 @@ export default function ReceiverPage() {
     const selectedPictogram = pictogramId
       ? suggestions.find(pictogram => pictogram.id === pictogramId)
       : suggestions[0]
-    if (!record || !selectedPictogram) {
+    if (!record || record.status !== 'suggested' || !selectedPictogram) {
       return { ok: false, message: '候选图已经失效，请重新搜索。' }
     }
 
-    const cached = await taroPictogramSearchPort.cache(
-      selectedPictogram
-    )
-    if (!cached.ok || !cached.value) return cached
+    const confirmationKey = JSON.stringify([missingTokenScopeKey, record.id])
+    if (missingTokenConfirmationsRef.current.has(confirmationKey)) {
+      return { ok: false, message: '图片正在保存，请稍候。' }
+    }
+    // A synchronous guard also covers repeated clicks before React rerenders.
+    const epoch = currentImageOperationEpoch()
+    const preparedKey = JSON.stringify([confirmationKey, record, selectedPictogram.id, epoch])
+    missingTokenConfirmationsRef.current.add(confirmationKey)
+    let cachedPictogram: RuntimePictogram | undefined
+    // A failed receipt does not prove that the image is unreferenced. Retain
+    // prepared bytes for this operation; never delete an existing snapshot.
+    const discardUncommittedImage = async (failure: MissingTokenOnlineResult) => failure
 
-    repositoryRef.current.reviewMissingToken(record.id, {
-      status: 'resolved',
-      resolvedPictogramId: cached.value.id,
-      resolvedPictogram: cached.value,
-      source: `online:${cached.value.source.provider}`
-    })
-    setMissingTokenItems(repositoryRef.current.loadMissingTokens())
-    return cached
+
+    try {
+      const ticket = {}
+      const snapshot = JSON.stringify(record)
+      missingTokenRequestsRef.current.set(record.id, ticket)
+      const prepared = preparedMissingImagesRef.current.get(preparedKey)
+      const cached = prepared ? { ok: true, value: prepared, message: '已复用本次核验图片。' }
+        : await taroPictogramSearchPort.cache(selectedPictogram)
+      if (!cached.ok || !cached.value) return cached
+      cachedPictogram = cached.value
+      if (epoch !== currentImageOperationEpoch()) return { ok: false, message: '操作范围已变化，图片未采用。' }
+      preparedMissingImagesRef.current.set(preparedKey, cached.value)
+      if (!isMissingTokenRequestCurrent(record, ticket, snapshot)) {
+        return await discardUncommittedImage({ ok: false, message: '记录或候选图已更新，请重新确认。' })
+      }
+
+      const reviewed = repositoryRef.current.reviewMissingToken(record.id, {
+        status: 'resolved',
+        resolvedPictogramId: cached.value.id,
+        resolvedPictogram: cached.value,
+        source: `online:${cached.value.source.provider}`
+      })
+      if (!reviewed || reviewed.status !== 'resolved' ||
+          reviewed.resolvedPictogram?.image !== cached.value.image) {
+        return await discardUncommittedImage({ ok: false, message: '词图关联保存失败，请保留候选并重试。' })
+      }
+      preparedMissingImagesRef.current.delete(preparedKey)
+      setMissingTokenItems(repositoryRef.current.loadMissingTokens())
+      return cached
+    } catch (error) {
+      return await discardUncommittedImage({
+        ok: false,
+        message: cachedPictogram
+          ? '词图关联保存失败，请保留候选并重试。'
+          : '图片下载或保存失败，请保留候选并重试。'
+      })
+    } finally {
+      missingTokenConfirmationsRef.current.delete(confirmationKey)
+    }
   }
 
   const selectConversationScene = (scene: ConversationScene) => {
@@ -553,12 +645,38 @@ export default function ReceiverPage() {
     })
   }
 
+  if (preparationMode) {
+    return <View className={pageClassName}>
+      <NetworkStatusNotice />
+      <SavedPhrasePreparation key={missingTokenScopeKey}
+        initialRequest={Taro.getCurrentInstance().router?.params.phraseId ? { id: decodeURIComponent(Taro.getCurrentInstance().router?.params.phraseId || ''), mode: Taro.getCurrentInstance().router?.params.phraseMode === 'copy' ? 'copy' : 'edit' } : undefined}
+        repository={repositoryRef.current} getScopeKey={getMissingTokenScopeKey}
+        onInvalidate={() => { missingTokenRequestsRef.current.clear(); wechatSpeechPort.stop() }}
+        onClose={() => { void Taro.navigateBack() }}
+        onSaved={(item, cleanupPending) => {
+          Taro.getCurrentInstance().page?.getOpenerEventChannel?.().emit('prepared', { item, cleanupPending })
+          void Taro.navigateBack()
+        }}
+        receiverProps={{ boards: communicationBoards, onConfirm: () => false,
+          onCreateDraft: () => null, onUpdateDraft: () => null, onConfirmDraft: () => null,
+          onDiscardResumableRecord: () => false, onRecordCorrection: () => false,
+          onRecordMissingTokens: recordMissingTokens, missingTokenRecords: missingTokenItems,
+          correctionMemory, onlineSearchEnabled: true,
+          onlineSearchAvailable: taroPictogramSearchPort.configured,
+          onReviewMissingToken: reviewMissingToken, onSearchMissingTokensOnline: searchMissingTokensOnline,
+          onAcceptMissingTokenOnline: acceptMissingTokenOnline, onOpenDisplay: () => {} }}
+      />
+    </View>
+  }
   if (receiverDisplay) {
     return (
       <ReceiverDisplayPage
         items={receiverDisplay.items}
         recordId={receiverDisplay.recordId}
         speechText={receiverDisplay.speechText}
+        sequence={receiverDisplay.resumeState.activeDraft?.pictogramSequence}
+        startSegmented={receiverDisplay.startSegmented}
+        autoPlay={receiverDisplay.autoPlay}
         speechRate={preferences.speechRate}
         highContrast={preferences.highContrast}
         onFeedback={recordReceiverPatientFeedback}
@@ -660,6 +778,7 @@ export default function ReceiverPage() {
         key={`receive-${conversationSession.id}-${preferences.hiddenBoardIds.join('-')}-${personalImageSignature}`}
         boards={communicationBoards}
         initialState={receiverWorkspaceResumeState}
+        receiverRecords={repositoryRef.current.loadReceiverRecords()}
         imageTextRecognitionIntent={imageTextRecognitionIntent}
         onOpenImageTextRecognition={
           runtimeCapabilities.ocr
@@ -680,12 +799,13 @@ export default function ReceiverPage() {
         onReviewMissingToken={reviewMissingToken}
         onSearchMissingTokensOnline={searchMissingTokensOnline}
         onAcceptMissingTokenOnline={acceptMissingTokenOnline}
-        onOpenDisplay={(items, speechText, recordId, resumeState) =>
+        onOpenDisplay={(items, speechText, recordId, resumeState, options) =>
           setReceiverDisplay({
             items: items.slice(),
             recordId,
             speechText,
-            resumeState
+            resumeState,
+            ...options
           })
         }
       />

@@ -32,6 +32,8 @@ import ProductSupportPanel from './ProductSupportPanel'
 import PictogramImage from '../../components/PictogramImage'
 import { resolveSpeechVoiceSelection } from './speechVoiceCatalog'
 import './CommunicationSettings.css'
+import { runtimeCapabilities } from '../../config/runtimeCapabilities'
+import { openTextAiSetup, useTaroTextAiAvailability } from '../../platform/taroTextAiAvailability'
 
 interface CommunicationSettingsPanelProps {
   boards: BoardDTO[]
@@ -178,6 +180,7 @@ export default function CommunicationSettingsPanel({
   const [orderingBoardId, setOrderingBoardId] = useState(
     boards.length ? boards[0].id : ''
   )
+  const textAi = useTaroTextAiAvailability()
   const orderingBoard =
     boards.find(board => board.id === orderingBoardId) || boards[0]
   const orderingBoardIndex = Math.max(
@@ -320,7 +323,13 @@ export default function CommunicationSettingsPanel({
       <View className='settings-row settings-row--stack ai-health'>
         <Text className='settings-row__label'>可选增强服务</Text>
         <Text className='settings-row__hint'>
-          检测候选句、分词、图片识字、图卡建议、粤语录音识别、图片去背景和服务端后备朗读。任何增强失败都不影响本地图板和手工沟通。
+          检测服务器配置不等于开放本版本能力；本地分词和手工沟通始终可用。
+        </Text>
+        <Text id='ai-build-capabilities' className='settings-row__hint'>
+          本版本开放：文字 AI {runtimeCapabilities.textAiFeatures ? '已开放' : '未开放'}；
+          图片生成／去背景／云语音 {runtimeCapabilities.aiFeatures ? '已开放' : '未开放'}；
+          图片识字 {runtimeCapabilities.ocr ? '已开放' : '未开放'}；
+          云端粤语识别 {runtimeCapabilities.dialectAsr ? '已开放' : '未开放'}。
         </Text>
         <Text
           id='ai-health-configuration'
@@ -331,8 +340,8 @@ export default function CommunicationSettingsPanel({
           }
         >
           {aiConfigured
-            ? '已配置 cboard-api，登录后可检测模型连接。'
-            : '尚未配置手机可访问的 HTTPS cboard-api。'}
+            ? '文字 AI 地址已配置，登录后可检测服务器状态。'
+            : '本版本未开放文字 AI 或尚未配置可用地址。'}
         </Text>
         <Button
           id='ai-health-check-button'
@@ -342,6 +351,12 @@ export default function CommunicationSettingsPanel({
         >
           {aiBusy ? '检测中...' : '检测增强服务'}
         </Button>
+        {!textAi.available && <View id='settings-text-ai-availability'>
+          <Text>{textAi.message}</Text>
+          {textAi.action && <Button onClick={() => void openTextAiSetup(textAi.action)}>
+            {textAi.action === 'login' ? '前往账号登录' : '选择档案与额度'}
+          </Button>}
+        </View>}
         {aiNotice && (
           <Text id='ai-health-notice' className='ai-health__notice'>
             {aiNotice}
@@ -353,7 +368,7 @@ export default function CommunicationSettingsPanel({
         <Button
           id='ai-live-test-button'
           className='review-action'
-          disabled={aiTestBusy || !aiConfigured || !accountSession}
+          disabled={aiTestBusy || !aiConfigured || !accountSession || !textAi.available}
           onClick={onTestAi}
         >
           {aiTestBusy ? '真实连接测试中...' : '测试真实 AI 连接'}

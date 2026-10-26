@@ -1,6 +1,8 @@
+import { currentImageOperationEpoch } from '@cboard-communication-core/imageOperationEpoch'
 import {
   normalizeRuntimePictogram as normalizeCoreRuntimePictogram
 } from '@cboard-communication-core/runtimePictogram'
+import { rankPictogramCandidates } from '@cboard-communication-core/pictogramSemantics'
 
 export interface RuntimePictogramSource {
   provider: string
@@ -15,6 +17,7 @@ export interface RuntimePictogramSource {
 }
 
 export interface RuntimePictogram {
+  semantics?: import('@cboard-communication-core/pictogramSemantics').PictogramSemantics
   id: string
   label: string
   vocalization: string
@@ -55,6 +58,7 @@ interface SaveResult {
 }
 
 interface PictogramSearchDependencies {
+  verifyImage?: (source: string) => Promise<{ status: string }>
   apiBaseUrl: string
   request: (options: {
     url: string
@@ -93,15 +97,19 @@ function getApiOrigin(baseUrl: string) {
   return match ? match[1] : ''
 }
 
-function resolveTrustedImageUrl(baseUrl: string, imageUrl: unknown) {
+export function resolveTrustedImageUrl(baseUrl: string, imageUrl: unknown) {
+  baseUrl = normalizeBaseUrl(baseUrl)
   const value = String(imageUrl || '').trim()
   const origin = getApiOrigin(baseUrl)
   if (!origin || !value) return ''
 
   if (value.startsWith('/')) {
+    if (value.startsWith('/pictograms/')) return baseUrl + value
     return origin + value
   }
 
+  if (value.startsWith(origin + '/pictograms/'))
+    return baseUrl + value.slice(origin.length)
   return value === origin || value.startsWith(origin + '/') ? value : ''
 }
 
@@ -151,7 +159,7 @@ export function createPictogramSearchPort(
         const payload = response.data as { results?: unknown[] } | null
         const payloadResults =
           payload && Array.isArray(payload.results) ? payload.results : []
-        const results = payloadResults
+        const normalizedResults = payloadResults
           .map(item => {
             if (!item || typeof item !== 'object') return null
             const raw = item as Record<string, unknown>
@@ -160,6 +168,9 @@ export function createPictogramSearchPort(
             return token && pictogram ? { token, pictogram } : null
           })
           .filter((item): item is PictogramSearchResult => Boolean(item))
+        const results = queryTokens.flatMap(token => rankPictogramCandidates(token,
+          normalizedResults.filter(item => item.token === token).map(item => item.pictogram))
+          .map(pictogram => ({ token, pictogram })))
 
         return {
           ok: true,
@@ -172,6 +183,7 @@ export function createPictogramSearchPort(
     },
 
     async cache(pictogram) {
+      const epoch = currentImageOperationEpoch()
       const normalized = normalizePictogram(apiBaseUrl, pictogram)
       if (!configured || !normalized) {
         return { ok: false, message: '候选图片来源无效，未保存。' }
@@ -196,6 +208,11 @@ export function createPictogramSearchPort(
           return { ok: false, message: '候选图片无法保存到本机。' }
         }
 
+        if (!dependencies.verifyImage || (await dependencies.verifyImage(saved.savedFilePath)).status !== 'available') {
+          return { ok: false, message: '图片文件未通过本机读取和解码核验，尚未采用，请重试。' }
+        }
+
+        if (epoch !== currentImageOperationEpoch()) return { ok: false, message: '操作范围已变化，图片未采用。' }
         return {
           ok: true,
           message: '图片已确认并保存到本机。',

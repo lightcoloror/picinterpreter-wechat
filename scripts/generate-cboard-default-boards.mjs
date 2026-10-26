@@ -1,15 +1,18 @@
 import { spawnSync } from 'node:child_process'
+import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync
 } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { encodeCboardDefaultRuntimeBoards } from './cboard-default-runtime-format.mjs'
+import { inspectGeneratedPng } from './generated-png-integrity.mjs'
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -38,6 +41,7 @@ const IMAGE_FORMAT = 'png'
 const IMAGE_COLORS = 32
 const IMAGE_BACKGROUND = 'white'
 const IMAGE_VARIANT = 'png8-white-v1'
+const manifestOnly = process.argv.includes('--manifest-only')
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -156,10 +160,12 @@ if (!assetsRoot.startsWith(projectRoot) || !generatedRoot.startsWith(projectRoot
   throw new Error('Generated output escaped the WeChat project root.')
 }
 
-const magick = resolveMagick()
-rmSync(assetsRoot, { recursive: true, force: true })
-mkdirSync(assetsRoot, { recursive: true })
-mkdirSync(generatedRoot, { recursive: true })
+const magick = manifestOnly ? null : resolveMagick()
+if (!manifestOnly) {
+  rmSync(assetsRoot, { recursive: true, force: true })
+  mkdirSync(assetsRoot, { recursive: true })
+  mkdirSync(generatedRoot, { recursive: true })
+}
 
 const convertedImages = new Map()
 const generatedBoards = sourceBoards.map(board => ({
@@ -178,11 +184,13 @@ const generatedBoards = sourceBoards.map(board => ({
       ].join('\0')
       outputName =
         sha256(imageFingerprint).slice(0, 16) + '.' + IMAGE_FORMAT
-      convertImage(
-        magick,
-        sourceImage.absolutePath,
-        path.join(assetsRoot, outputName)
-      )
+      if (!manifestOnly) {
+        convertImage(
+          magick,
+          sourceImage.absolutePath,
+          path.join(assetsRoot, outputName)
+        )
+      }
       convertedImages.set(sourceImage.normalized, outputName)
     }
 
@@ -203,6 +211,26 @@ const generatedBoards = sourceBoards.map(board => ({
   })
 }))
 
+// Default-card repairs must not break images referenced by earlier confirmed
+// records. Reuse the same source/fingerprint/conversion rules for this small,
+// explicit compatibility list; do not silently retain arbitrary orphan files.
+const retainedImages = JSON.parse(readFileSync(
+  path.join(projectRoot, 'scripts/cboard-retained-images.json'), 'utf8'
+)).map(({ sourceImage: image }) => {
+  const source = resolveSourceImage(image)
+  let outputName = convertedImages.get(source.normalized)
+  if (!outputName) {
+    outputName = sha256([
+      source.normalized, sha256(readFileSync(source.absolutePath)), IMAGE_VARIANT
+    ].join('\0')).slice(0, 16) + '.' + IMAGE_FORMAT
+    if (!manifestOnly) {
+      convertImage(magick, source.absolutePath, path.join(assetsRoot, outputName))
+    }
+    convertedImages.set(source.normalized, outputName)
+  }
+  return outputName
+})
+
 const manifest = {
   version: 1,
   source:
@@ -216,6 +244,7 @@ const manifest = {
     0
   ),
   imageCount: convertedImages.size,
+  retainedImages,
   imageSize: IMAGE_SIZE,
   imageFormat: IMAGE_FORMAT,
   imageColors: IMAGE_COLORS,
@@ -223,15 +252,49 @@ const manifest = {
   imageVariant: IMAGE_VARIANT
 }
 
-writeFileSync(boardsOutputPath, JSON.stringify(generatedBoards) + '\n')
-writeFileSync(
-  runtimeBoardsOutputPath,
-  JSON.stringify(encodeCboardDefaultRuntimeBoards(generatedBoards)) + '\n'
-)
+const generatedRuntimeBoards = encodeCboardDefaultRuntimeBoards(generatedBoards)
+if (manifestOnly) {
+  // A new source fingerprint must never bless stale labels, board structure,
+  // or pictures. Reuse the complete generation above before allowing this
+  // metadata-only write; no ImageMagick process or asset writes are needed.
+  assert.deepEqual(
+    JSON.parse(readFileSync(boardsOutputPath, 'utf8')),
+    generatedBoards,
+    'Default boards changed; run full generation instead of --manifest-only.'
+  )
+  assert.deepEqual(
+    JSON.parse(readFileSync(runtimeBoardsOutputPath, 'utf8')),
+    generatedRuntimeBoards,
+    'Default runtime boards changed; run full generation instead of --manifest-only.'
+  )
+  const previousManifest = JSON.parse(readFileSync(manifestOutputPath, 'utf8'))
+  const withoutSourceFingerprints = value => {
+    const { boardsSha256, translationsSha256, reviewedTranslationsSha256, ...rest } = value
+    return rest
+  }
+  assert.deepEqual(withoutSourceFingerprints(previousManifest), withoutSourceFingerprints(manifest),
+    'Default package metadata changed; run full generation instead of --manifest-only.')
+  const imageNames = [...convertedImages.values()].sort()
+  const assets = readdirSync(assetsRoot, { withFileTypes: true })
+  assert(assets.every(entry => entry.isFile()), 'Unexpected directory in default assets.')
+  assert.deepEqual(assets.map(entry => entry.name).sort(), imageNames,
+    'Default assets are missing or contain unexpected files.')
+  for (const imageName of imageNames) {
+    const bytes = readFileSync(path.join(assetsRoot, imageName))
+    assert(bytes.length >= 200, 'Default image is suspiciously small: ' + imageName)
+    inspectGeneratedPng(bytes, {
+      expectedMaxSize: IMAGE_SIZE,
+      expectedPaletteColors: IMAGE_COLORS
+    })
+  }
+} else {
+  writeFileSync(boardsOutputPath, JSON.stringify(generatedBoards) + '\n')
+  writeFileSync(runtimeBoardsOutputPath, JSON.stringify(generatedRuntimeBoards) + '\n')
+}
 writeFileSync(manifestOutputPath, JSON.stringify(manifest, null, 2) + '\n')
 
 console.log(
-  'Generated ' +
+  (manifestOnly ? 'Refreshed manifest only; preserved ' : 'Generated ') +
     manifest.boardCount +
     ' boards, ' +
     manifest.tileCount +

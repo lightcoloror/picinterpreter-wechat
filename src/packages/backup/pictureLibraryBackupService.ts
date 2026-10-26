@@ -1,3 +1,4 @@
+import { clearSavedPhraseUndoSession } from '@cboard-communication-core/savedPhraseUse'
 import type { BoardDTO } from "@cboard-communication-core/dto";
 import type { PictogramOrderingState } from "@cboard-communication-core/pictogramOrdering";
 import {
@@ -45,6 +46,7 @@ import {
 type PictureLibraryRepository = Pick<
   CommunicationRepository,
   | "loadCommunicationIdentity"
+  | "clearExpressionDrafts"
   | "loadPersonalImagePreferences"
   | "loadAllPersonalImagePreferences"
   | "overwritePersonalImagePreferences"
@@ -934,6 +936,15 @@ export function createPictureLibraryBackupService(
     },
 
     async clearPrivatePictograms(): Promise<PictureLibraryBackupResult> {
+      clearSavedPhraseUndoSession();
+      try {
+        dependencies.repository.clearExpressionDrafts();
+      } catch (_) {
+        return {
+          ok: false,
+          message: "未能清除含私人图片的表达草稿，尚未删除图片，请重试。",
+        };
+      }
       const plan = buildPrivatePictogramClearPlan({
         personalImagePreferences:
           dependencies.repository.loadAllPersonalImagePreferences(),

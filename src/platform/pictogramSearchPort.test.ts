@@ -1,6 +1,14 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { createPictogramSearchPort } from './pictogramSearchPort'
+import { createPictogramSearchPort, resolveTrustedImageUrl } from './pictogramSearchPort'
+
+test('cached preview uses the same API mount as downloads', () => {
+  const base = 'https://api.example.test/api/'
+  const path = '/pictograms/arasaac/123/image'
+  expect(resolveTrustedImageUrl(base, 'https://api.example.test' + path)).toBe(base.slice(0, -1) + path)
+  expect(resolveTrustedImageUrl(base, base.slice(0, -1) + path)).toBe(base.slice(0, -1) + path)
+  expect(resolveTrustedImageUrl(base, 'https://foreign.invalid' + path)).toBe('')
+})
 
 const apiPictogram = {
   id: 'runtime_arasaac_123',
@@ -54,7 +62,7 @@ function createHarness(apiBaseUrl = 'https://api.example.test') {
     request,
     downloadFile,
     saveFile,
-    port: createPictogramSearchPort({
+    port: createPictogramSearchPort({verifyImage: async () => ({status: 'available'}),
       apiBaseUrl,
       request,
       downloadFile,
@@ -64,6 +72,18 @@ function createHarness(apiBaseUrl = 'https://api.example.test') {
 }
 
 describe('pictogramSearchPort', () => {
+  test.each([
+    '/pictograms/arasaac/123/image',
+    'https://api.example.test/pictograms/arasaac/123/image',
+    'https://api.example.test/api/pictograms/arasaac/123/image'
+  ])('preserves the production API mount when downloading %s', async imageUrl => {
+    const h = createHarness('https://api.example.test/api')
+    h.request.mockResolvedValue({statusCode: 200, data: {results: [{token: '苹果', pictogram: {...apiPictogram, imageUrl}}]}})
+    const result = await h.port.search(['苹果'])
+    expect(result.value![0].pictogram.image).toBe('https://api.example.test/api/pictograms/arasaac/123/image')
+    await h.port.cache(result.value![0].pictogram)
+    expect(h.downloadFile).toHaveBeenCalledWith({url: 'https://api.example.test/api/pictograms/arasaac/123/image'})
+  })
   test('sends only bounded missing tokens to cboard-api', async () => {
     const harness = createHarness()
     const result = await harness.port.search([

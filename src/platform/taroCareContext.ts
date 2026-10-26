@@ -1,3 +1,5 @@
+import { clearSavedPhraseUndoSession } from '@cboard-communication-core/savedPhraseUse'
+import { invalidateImageOperations } from '@cboard-communication-core/imageOperationEpoch'
 import Taro from '@tarojs/taro'
 import { taroCboardSessionStore } from './taroCboardAccountPort'
 
@@ -19,7 +21,12 @@ export function currentCareContext() {
 export function saveCareSelection(selection: CareSelection) {
   const accountId = taroCboardSessionStore.load()?.user.id
   if (!accountId) throw new Error('请先登录')
+  if (currentCareContext()?.profileId !== selection.id) {
+    clearSavedPhraseUndoSession()
+    invalidateImageOperations()
+  }
   Taro.setStorageSync(`care-selection-v1:${accountId}`, selection)
+  Taro.eventCenter.trigger('care-ai-context-changed')
 }
 export function careScopedKey(key: string) {
   const c = currentCareContext()

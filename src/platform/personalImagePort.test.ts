@@ -10,7 +10,7 @@ describe('personal image port', () => {
     const saveFile = vi.fn(async () => ({
       savedFilePath: 'wxfile://saved/familiar-cup.jpg'
     }))
-    const port = createPersonalImagePort({
+    const port = createPersonalImagePort({verifyImage: async () => ({status: 'available'}),
       chooseImage: async () => ({ tempFilePath: 'wxfile://temp/photo.jpg' }),
       saveFile,
       removeSavedFile: vi.fn(async () => undefined)
@@ -25,7 +25,7 @@ describe('personal image port', () => {
   })
 
   test('treats picker cancellation as a safe no-op', async () => {
-    const port = createPersonalImagePort({
+    const port = createPersonalImagePort({verifyImage: async () => ({status: 'available'}),
       chooseImage: async () => {
         throw { errMsg: 'chooseMedia:fail cancel' }
       },
@@ -40,7 +40,7 @@ describe('personal image port', () => {
   })
 
   test('reports persistence failure without returning a temporary path', async () => {
-    const port = createPersonalImagePort({
+    const port = createPersonalImagePort({verifyImage: async () => ({status: 'available'}),
       chooseImage: async () => ({ tempFilePath: 'wxfile://temp/photo.jpg' }),
       saveFile: async () => {
         throw new Error('quota exceeded')
@@ -55,7 +55,7 @@ describe('personal image port', () => {
   })
 
   test('contains cleanup failure after the preference already fell back', async () => {
-    const port = createPersonalImagePort({
+    const port = createPersonalImagePort({verifyImage: async () => ({status: 'available'}),
       chooseImage: async () => null,
       saveFile: vi.fn(),
       removeSavedFile: async () => {

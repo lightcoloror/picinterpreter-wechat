@@ -99,6 +99,22 @@ const generatedImageNamePattern = /^[0-9a-f]{16}\.png$/
 const incompatibleImages = []
 const referencedImageNames = new Set()
 
+const retainedImages = JSON.parse(readFileSync(
+  path.join(projectRoot, 'scripts/cboard-retained-images.json'), 'utf8'
+)).map(({ sourceImage }) => {
+  const normalized = sourceImage.replace(/^[/\\]+/, '')
+  const sourcePath = path.resolve(cboardRoot, 'public', normalized)
+  assert(sourcePath.startsWith(path.resolve(cboardRoot, 'public') + path.sep))
+  return sha256([normalized, sha256(readFileSync(sourcePath)), EXPECTED_IMAGE_VARIANT]
+    .join('\0')).slice(0, 16) + '.png'
+})
+try {
+  assert.deepEqual(manifest.retainedImages, retainedImages)
+} catch {
+  fail('Generated CBoard compatibility assets are stale.')
+}
+retainedImages.forEach(image => referencedImageNames.add(image))
+
 for (const tile of tiles) {
   const publicImagePath = String(tile.image || '')
   const imageName = publicImagePath.startsWith(imagePrefix)

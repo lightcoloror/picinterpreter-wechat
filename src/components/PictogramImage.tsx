@@ -3,6 +3,7 @@ import { Image, Text, Video, View } from '@tarojs/components'
 
 import { resolvePictogramImageViewState } from './pictogramImageState'
 import './PictogramImage.css'
+import { classifyImageReference } from '@cboard-communication-core/imageAvailability'
 
 interface PictogramImageProps {
   className?: string
@@ -13,6 +14,7 @@ interface PictogramImageProps {
   videoAutoplay?: boolean
   videoControls?: boolean
   videoLoop?: boolean
+  localOnly?: boolean
 }
 
 export default function PictogramImage({
@@ -23,14 +25,15 @@ export default function PictogramImage({
   video,
   videoAutoplay = false,
   videoControls = false,
-  videoLoop = true
+  videoLoop = true,
+  localOnly = false
 }: PictogramImageProps) {
   const [failedSource, setFailedSource] = useState('')
   const isVideo = mediaType === 'video' && Boolean(video)
   const shouldRenderVideo =
     isVideo && (videoAutoplay || videoControls)
   const state = resolvePictogramImageViewState(
-    shouldRenderVideo ? video : src,
+    shouldRenderVideo ? video : localOnly && ['remote-only', 'temporary'].includes(classifyImageReference(src || '')) ? '' : src,
     failedSource,
     label
   )
@@ -53,6 +56,9 @@ export default function PictogramImage({
       >
         <Text className='pictogram-image-fallback__text'>
           {state.fallbackLabel}
+        </Text>
+        <Text className='pictogram-image-fallback__retry'>
+          {shouldRenderVideo ? '视频暂时无法显示' : '图片暂时无法显示'}
         </Text>
         {state.canRetry && (
           <Text className='pictogram-image-fallback__retry'>点按重试</Text>

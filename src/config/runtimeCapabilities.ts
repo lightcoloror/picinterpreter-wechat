@@ -9,6 +9,7 @@ export interface RuntimeCapabilityEnvironment {
   apiBaseUrl?: string
   enableCloudFeatures?: string
   enableAiFeatures?: string
+  enableTextAiFeatures?: string
   enableOcr?: string
   enableOnlinePictograms?: string
   enableDialectAsr?: string
@@ -20,6 +21,7 @@ export interface RuntimeCapabilities {
   hasPublicHttpsApi: boolean
   cloudFeatures: boolean
   aiFeatures: boolean
+  textAiFeatures: boolean
   ocr: boolean
   onlinePictograms: boolean
   dialectAsr: boolean
@@ -30,13 +32,14 @@ export const runtimeCapabilities = createRuntimeCapabilities({
   apiBaseUrl: process.env.TARO_APP_API_BASE_URL,
   enableCloudFeatures: process.env.TARO_APP_ENABLE_CLOUD_FEATURES,
   enableAiFeatures: process.env.TARO_APP_ENABLE_AI_FEATURES,
+  enableTextAiFeatures: process.env.TARO_APP_ENABLE_TEXT_AI_FEATURES,
   enableOcr: process.env.TARO_APP_ENABLE_OCR,
   enableOnlinePictograms: process.env.TARO_APP_ENABLE_ONLINE_PICTOGRAMS,
   enableDialectAsr: process.env.TARO_APP_ENABLE_DIALECT_ASR
 })
 
 export function apiBaseUrlFor(
-  capability: 'cloudFeatures' | 'aiFeatures' | 'ocr' | 'dialectAsr' | 'onlinePictograms',
+  capability: 'cloudFeatures' | 'aiFeatures' | 'textAiFeatures' | 'ocr' | 'dialectAsr' | 'onlinePictograms',
   capabilities: RuntimeCapabilities = runtimeCapabilities
 ): string {
   if (!capabilities[capability]) return ''

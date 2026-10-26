@@ -23,7 +23,7 @@ import {
 import { captureWechatStorageSource, restoreWechatStorageSource } from './weapp-e2e-storage.mjs'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
-const projectPath = path.resolve(scriptDirectory, '..')
+const projectPath = path.resolve(process.env.WEAPP_E2E_PROJECT || path.join(scriptDirectory, '..'))
 const developerToolsCli = process.env.WECHAT_DEVTOOLS_CLI || ''
 const wechatideCandidates = [
   process.env.WECHATIDE_SKILL_CLI,
@@ -136,6 +136,7 @@ const OPEN_BOARD_LOG_ANONYMIZATIONS = [
 ]
 const runAccessibilityOnly =
   process.env.WEAPP_E2E_ACCESSIBILITY_ONLY === '1'
+const runOutputUndoOnly = process.env.WEAPP_E2E_OUTPUT_UNDO_ONLY === '1'
 const runReceiverRetentionOnly =
   process.env.WEAPP_E2E_RECEIVER_RETENTION_ONLY === '1'
 const runBoardManagementOnly =
@@ -2160,6 +2161,62 @@ async function verifyPersonalCardCopyScenario() {
   )
 }
 
+async function verifyOutputUndoScenario() {
+  const count = async expected => retry(`output count ${expected}`, async () =>
+    (await queryElements('.expression-chip')).length === expected ? true : null)
+  // Taro assigns fresh node IDs after clear/undo. Compare the rendered content,
+  // image sources and control state, excluding only those transient node IDs.
+  const output = async () => (await readOuterWxml('.expression-strip__inner'))
+    .replace(/ (?:id|data-sid)="_[^"]*"/g, '')
+  const history = () => callWx('getStorageSync', ['cboard_communication_history'])
+  const before = await history()
+  step('verifying backspace, accidental clear and consecutive undo')
+  await tap(`#expression-tile-${YES_TILE_ID}`)
+  await tap(`#expression-tile-${NO_TILE_ID}`)
+  await tap(`#expression-tile-${YES_TILE_ID}`)
+  await count(3)
+  const originalOutput = await output()
+  await tap('#expression-backspace-button')
+  await count(2)
+  await tap('#expression-clear-button')
+  await count(0)
+  assert.ok(!(await readOuterWxml('#expression-undo-delete-button')).includes('disabled="true"'))
+  await tap('#expression-undo-delete-button')
+  await count(2)
+  await tap('#expression-undo-delete-button')
+  await count(3)
+  assert.equal(await output(), originalOutput)
+  assert.ok((await readOuterWxml('#expression-undo-delete-button')).includes('disabled="true"'))
+  assert.equal(await history(), before, 'edits and undo do not silently save expressions')
+
+  step('blocking network APIs and restoring an accidentally cleared sequence offline')
+  await mockWx('getNetworkType', createCallbackWxMock(`{ networkType: 'none', errMsg: 'getNetworkType:ok' }`))
+  for (const method of ['request', 'downloadFile', 'uploadFile']) {
+    await mockWx(method, `function(options) { var error = { errMsg: '${method}:fail synthetic offline' }; if (options.fail) options.fail(error); if (options.complete) options.complete(error); return { abort: function() {} }; }`)
+  }
+  await tap('#expression-clear-button')
+  await count(0)
+  await tap('#expression-undo-delete-button')
+  await count(3)
+  assert.equal(await output(), originalOutput)
+  assert.equal(await history(), before)
+  await tap('#expression-confirm-button')
+  await waitForText('#expression-status-notice', '表达已确认')
+  step('reopening offline restores confirmed local history, without old undo history')
+  await navigate('reLaunch', PATIENT_PAGE_ROUTE)
+  await waitForSelector('.communication-page')
+  await count(3)
+  assert.ok((await readOuterWxml('#expression-undo-delete-button')).includes('disabled="true"'))
+  await tap('#expression-clear-button')
+  await count(0)
+  await tap('#expression-undo-delete-button')
+  await count(3)
+  await invokeTool('simulator_screenshot', {
+    project: projectPath, path: path.join(tempDirectory, 'output-undo-offline-restored.png')
+  })
+  await restoreWxMocks()
+}
+
 async function verifyOfflineCommunicationScenario() {
   step('setting the official wx network boundary to offline')
   await mockWx(
@@ -3010,7 +3067,7 @@ try {
           'simulator_open_page',
           {
             project: projectPath,
-            page: 'pages/index/index'
+            page: runOutputUndoOnly ? PATIENT_PAGE_ROUTE.slice(1) : 'pages/index/index'
           },
           60_000
         )
@@ -3086,7 +3143,7 @@ try {
     'simulator_open_page',
     {
       project: projectPath,
-      page: 'pages/index/index'
+      page: runOutputUndoOnly ? PATIENT_PAGE_ROUTE.slice(1) : 'pages/index/index'
     },
     60_000
   )
@@ -3129,10 +3186,14 @@ try {
 
   step('isolating deterministic E2E storage without clearing user data')
   await isolateStorage()
-  await navigate('reLaunch', '/pages/index/index')
+  // This scenario targets the output strip directly. Avoid the launch-page
+  // redirect race that can detach the IDE's automation WebView connection.
+  await navigate('reLaunch', runOutputUndoOnly ? PATIENT_PAGE_ROUTE : '/pages/index/index')
   await waitForSelector('.communication-page')
 
-  if (runReceiverRetentionOnly) {
+  if (runOutputUndoOnly) {
+    await verifyOutputUndoScenario()
+  } else if (runReceiverRetentionOnly) {
     await verifyReceiverRetentionScenario()
   } else if (runAccessibilityOnly) {
     await verifyOnboardingAccessibilityScenario()
@@ -5539,6 +5600,8 @@ try {
 if (scenarioPassed && !process.exitCode) {
   const scenarioSummary = restoreStorageRecoveryOnly
     ? 'verified persistent storage recovery'
+    : runOutputUndoOnly
+    ? 'backspace, accidental clear, consecutive undo, blocked-network restoration, offline confirmation and cold reconstruction'
     : runReceiverRetentionOnly
     ? 'explicit missing-word text retention, double-negation draft cold resume, confirmation duplicate prevention, and confirmed storage reconstruction'
     : runAccessibilityOnly

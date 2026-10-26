@@ -23,6 +23,37 @@
   color: #fffdf6;
 }
 
+.gallery-delete-undo {
+  display: flex;
+  position: sticky;
+  top: 12px;
+  z-index: 10;
+  margin-top: 18px;
+  padding: 18px;
+  gap: 12px;
+  flex-direction: column;
+  border: 2px solid #287560;
+  border-radius: 18px;
+  background: #fffaf0;
+  font-size: 23px;
+  line-height: 1.45;
+}
+
+.gallery-delete-undo button {
+  width: 100%;
+  min-height: 72px;
+  margin: 0;
+  border-radius: 14px;
+  background: #287560;
+  color: #fff;
+  font-size: 25px;
+}
+
+.gallery-delete-undo__hint {
+  color: #66766f;
+  font-size: 19px;
+}
+
 .personal-image-page__eyebrow,
 .personal-image-page__title {
   display: block;

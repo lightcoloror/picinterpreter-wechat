@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Text, View } from '@tarojs/components'
-import Taro, { useDidShow, useRouter } from '@tarojs/taro'
+import Taro, { useDidHide, useDidShow, useRouter } from '@tarojs/taro'
 import type { CommunicationPreferences } from '@cboard-communication-core/communicationPreferences'
 import type {
   CommunicationServiceReadiness
@@ -28,6 +28,9 @@ import type {
   ReceiverCorrectionEntry
 } from '@cboard-communication-core/receiverLifecycle'
 
+import { careScopedKey, canEditCareLibrary } from '../../../../platform/taroCareContext'
+import { runtimeCapabilities } from '../../../../config/runtimeCapabilities'
+import { getTaroTextAiAvailability, useTaroTextAiAvailability } from '../../../../platform/taroTextAiAvailability'
 import type {
   CboardAccountSession,
   CboardApiResult,
@@ -115,6 +118,8 @@ export default function CommunicationManagementPage() {
   )
   const managementServiceRef = useRef(
     createCommunicationManagementService({
+      getScopeKey: () => careScopedKey('phrase-import'),
+      canManage: canEditCareLibrary,
       repository: repositoryRef.current,
       boards: initialPersonalizedBoardsRef.current
     })
@@ -156,6 +161,17 @@ export default function CommunicationManagementPage() {
   const [aiBusy, setAiBusy] = useState(false)
   const [aiNotice, setAiNotice] = useState('')
   const [aiTestBusy, setAiTestBusy] = useState(false)
+  const aiTestPendingRef = useRef(false)
+  const aiUiGenerationRef = useRef(0)
+  const textAi = useTaroTextAiAvailability()
+  const invalidateAiUi = () => {
+    aiUiGenerationRef.current += 1
+    aiTestPendingRef.current = false
+    setAiTestBusy(false)
+    setAiBusy(false)
+  }
+  useDidHide(invalidateAiUi)
+  useEffect(invalidateAiUi, [textAi.contextKey])
   const [aiTestNotice, setAiTestNotice] = useState('')
   const [speechVoiceDefault, setSpeechVoiceDefault] = useState('')
   const [speechVoices, setSpeechVoices] = useState<string[]>([])
@@ -206,6 +222,8 @@ export default function CommunicationManagementPage() {
       repositoryRef.current.loadCommunicationSavedPhrases()
     )
     managementServiceRef.current = createCommunicationManagementService({
+      getScopeKey: () => careScopedKey('phrase-import'),
+      canManage: canEditCareLibrary,
       repository: repositoryRef.current,
       boards: applyPersonalImagePreferencesToBoards(
         nextBoards,
@@ -562,23 +580,26 @@ export default function CommunicationManagementPage() {
   }
 
   const checkAiService = async () => {
-    if (aiBusy) return
+    if (aiBusy || aiTestPendingRef.current) return
+    const generation = ++aiUiGenerationRef.current
+    const contextKey = getTaroTextAiAvailability().contextKey
     setAiBusy(true)
     try {
       const result = await taroCommunicationAiPort.health()
       const usageResult = result.ok
         ? await taroCommunicationAiPort.usage()
         : null
+      if (generation !== aiUiGenerationRef.current || contextKey !== getTaroTextAiAvailability().contextKey) return
       if (!result.ok || !result.value) {
         setSpeechVoiceDefault('')
         setSpeechVoices([])
         setAiNotice(result.message)
         return
       }
-      setSpeechVoiceDefault(result.value.speechVoice)
-      setSpeechVoices(result.value.speechVoices)
+      setSpeechVoiceDefault(runtimeCapabilities.aiFeatures ? result.value.speechVoice : '')
+      setSpeechVoices(runtimeCapabilities.aiFeatures ? result.value.speechVoices : [])
       const voiceWasRemoved = Boolean(
-        result.value.speechConfigured &&
+        runtimeCapabilities.aiFeatures && result.value.speechConfigured &&
         result.value.speechVoices.length &&
         preferences.speechVoice &&
         !result.value.speechVoices.includes(preferences.speechVoice)
@@ -649,22 +670,30 @@ export default function CommunicationManagementPage() {
             : `AI 用量（${usage.month}）：暂无计量模型调用`
         )
       }
-      setAiNotice(capabilities.join('；'))
+      setAiNotice('服务器配置状态（不代表本版本已开放）：' + capabilities.join('；'))
     } finally {
-      setAiBusy(false)
+      if (generation === aiUiGenerationRef.current) setAiBusy(false)
     }
   }
 
   const testAiConnection = async () => {
-    if (aiTestBusy) return
+    if (aiTestPendingRef.current) return
+    const availability = getTaroTextAiAvailability()
+    if (!availability.available) { setAiTestNotice(availability.message); return }
+    const generation = ++aiUiGenerationRef.current
+    aiTestPendingRef.current = true
     setAiTestBusy(true)
     try {
       const result = await runCommunicationAiConnectionTest(
         taroCommunicationAiPort
       )
-      setAiTestNotice(result.message)
+      if (generation === aiUiGenerationRef.current && availability.contextKey === getTaroTextAiAvailability().contextKey)
+        setAiTestNotice(result.message)
     } finally {
-      setAiTestBusy(false)
+      if (generation === aiUiGenerationRef.current) {
+        aiTestPendingRef.current = false
+        setAiTestBusy(false)
+      }
     }
   }
 
@@ -743,6 +772,8 @@ export default function CommunicationManagementPage() {
 
       {view === 'phrases' && (
         <SavedPhraseManager
+          key={careScopedKey('phrase-manager')}
+          initialLifeContext={router.params.lifeContext === undefined ? null : router.params.lifeContext}
           service={managementServiceRef.current}
           items={savedPhraseItems}
           speechRate={preferences.speechRate}

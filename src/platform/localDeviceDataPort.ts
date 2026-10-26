@@ -1,3 +1,6 @@
+import { clearSavedPhraseUndoSession } from '@cboard-communication-core/savedPhraseUse'
+import { invalidateImageOperations } from '@cboard-communication-core/imageOperationEpoch'
+
 export interface LocalDeviceDataPortResult {
   ok: boolean
   message: string
@@ -9,6 +12,7 @@ export interface LocalDeviceDataPort {
 }
 
 interface LocalDeviceDataPortDependencies {
+  clearExpressionState?(): Promise<void>
   removeFile(filePath: string): Promise<void>
   listSavedFiles(): Promise<string[]>
   listGeneratedFiles(): Promise<string[]>
@@ -41,7 +45,11 @@ export function createLocalDeviceDataPort(
     },
 
     async clearAllLocalData() {
+      invalidateImageOperations()
+      clearSavedPhraseUndoSession()
       try {
+        // A verified empty file barrier must survive delayed legacy KV cleanup.
+        await dependencies.clearExpressionState?.()
         const files = Array.from(
           new Set([
             ...(await dependencies.listSavedFiles()),

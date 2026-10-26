@@ -23,5 +23,6 @@ declare module '@cboard-communication-core/candidateAutoplay' {
     clearTimer(timer: ReturnType<typeof setTimeout>): void
     playCandidates(candidateSentences: string[]): Promise<void>
     stopPlayback(): void
+    onPendingChange?(delayMs: number): void
   }): CandidateAutoplayController
 }

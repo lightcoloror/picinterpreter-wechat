@@ -20,7 +20,7 @@ const projectRoot = path.resolve(
 )
 
 export const RELEASE_CAPABILITY_KEYS = [
-  'releaseChannel', 'cloudFeatures', 'aiFeatures', 'ocr',
+  'releaseChannel', 'cloudFeatures', 'aiFeatures', 'textAiFeatures', 'ocr',
   'onlinePictograms', 'dialectAsr', 'careCollaboration',
   'accountClosure', 'publicTrial'
 ]
@@ -126,6 +126,19 @@ export function buildArtifactInventory(distRoot) {
   }
 }
 
+export function inspectBuiltSpeechPlugin(distRoot) {
+  const app = JSON.parse(readFileSync(path.join(distRoot, 'app.json'), 'utf8'))
+  const plugin = app.plugins?.WechatSI
+  return {
+    source: 'app.json',
+    declared: Boolean(plugin),
+    version: typeof plugin?.version === 'string' ? plugin.version : null,
+    provider: typeof plugin?.provider === 'string' ? plugin.provider : null,
+    serviceAvailability: 'not_verified',
+    deviceAcceptance: 'not_verified'
+  }
+}
+
 export function runGit(args, spawn = spawnSync) {
   const result = spawn('git', args, {
     cwd: projectRoot,
@@ -154,7 +167,6 @@ export function parseSafeProductionSettings(source) {
     'TARO_APP_ENABLE_OCR',
     'TARO_APP_ENABLE_ONLINE_PICTOGRAMS',
     'TARO_APP_ENABLE_DIALECT_ASR',
-    'TARO_APP_WECHAT_SI_ENABLED',
     'TARO_APP_WECHAT_SI_VERSION'
   ])
   return source.split(/\r?\n/).reduce((settings, line) => {
@@ -214,6 +226,7 @@ export function run(args = process.argv.slice(2)) {
       untrackedChangesPresent: Boolean(fullStatus && fullStatus !== trackedStatus)
     },
     featureManifest,
+    speechPlugin: inspectBuiltSpeechPlugin(distRoot),
     formalEvidenceEligible: featureManifest.valid && !fullStatus,
     formalEvidenceLimitations: featureManifest.valid
       ? (fullStatus ? ['Source working tree has tracked or untracked changes.'] : [])

@@ -1,9 +1,11 @@
+import { createTaroFavoriteStateStore } from './taroFavoriteLocalFileStorage'
 import Taro from '@tarojs/taro'
 import { useEffect, useRef } from 'react'
 import { createCareSync } from '@cboard-communication-core/careSync'
 import { projectCareBoards, queueCareBoards } from '@cboard-communication-core/careProjection'
 import { encodeCareMedia, decodeCareMedia } from '@cboard-communication-core/careMediaValues'
 import { sameCareFavoriteContent } from '@cboard-communication-core/careFavoriteChanges'
+import { assertSavedPhraseCapacity } from '@cboard-communication-core/savedPhraseManagement'
 import { projectCareSharedPhrases } from '@cboard-communication-core/careSharedPhrases'
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
@@ -12,11 +14,13 @@ import { runtime } from './taroCareRuntime'
 import { careScopedKey, currentCareContext, saveCareSelection, withCareHydration } from './taroCareContext'
 import { taroPictureLibraryStore } from './taroPictureLibraryStore'
 import { preserveCareLocalTileMedia } from './careLocalMediaProjection'
+import { preserveCareLocalFavoriteMedia } from '@cboard-communication-core/careLocalMediaProjection'
 import { createTaroCommunicationRepository } from './taroCommunicationRepository'
 import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { configureCareCloudSync } from './communicationCloudSync'
 import { taroPictogramOrderingStore } from './taroPictogramOrderingStore'
 import { careBuiltinImages } from './taroCareBuiltinImages'
+import { assertCareAiRequestScope } from './taroCommunicationAiPort'
 
 let active: { key: string; engine: ReturnType<typeof createCareSync> } | null = null
 let pending: Promise<void> | null = null
@@ -96,7 +100,7 @@ function project(
       const repository = createTaroCommunicationRepository()
       const kind = currentCareContext()?.selection?.relationship?.role === 'patient' ? 'favorite' : 'personalFavorite'
       const favorites = Object.values(snapshot.resources).filter((r: any) => !r.deleted && r.kind === kind)
-      if (!Taro.getStorageSync(careScopedKey('care-pending-favorites'))) repository.overwriteCommunicationSavedPhrases(favorites.map((r: any) => ({ ...decodeCareMedia(r.value, snapshot.media, image), id: r.id, createdAt: r.value.createdAt || r.updatedAt || 1 })))
+      if (!createTaroFavoriteStateStore().read().pending) repository.overwriteCommunicationSavedPhrases(preserveCareLocalFavoriteMedia(favorites.map((r: any) => ({ ...decodeCareMedia(r.value, snapshot.media, image), id: r.id, createdAt: r.value.createdAt || r.updatedAt || 1 })), repository.loadCommunicationSavedPhrases(), expectedContext, current || expectedContext))
       const preferences = snapshot.resources['preference:personalImagePreferences']
       if (preferences && !preferences.deleted && !Taro.getStorageSync(careScopedKey('care-pending-personalImagePreferences'))) repository.overwritePersonalImagePreferences(decodeCareMedia(preferences.value.value, snapshot.media, image))
     })
@@ -122,17 +126,21 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
       await engine.init()
     }
     const engine = active.engine
+    let projectAfterSync = true
     try {
+      const favoriteStore = createTaroFavoriteStateStore()
+      const favoriteSnapshot = favoriteStore.read()
+      if (!options.localOnly) assertSavedPhraseCapacity(favoriteSnapshot.phrases || [])
+      const favorites = favoriteSnapshot.pending
+      if (favorites) assertSavedPhraseCapacity(Array.isArray(favorites) ? favorites : favorites.items)
       const raw = Taro.getStorageSync(scoped('care-pending-boards'))
       if (raw) {
         await queueCareBoards(engine, JSON.parse(String(raw)), readImage)
         if (Taro.getStorageSync(scoped('care-pending-boards')) === raw) Taro.removeStorageSync(scoped('care-pending-boards'))
       }
-      const favoriteKey = scoped('care-pending-favorites')
-      const favorites = Taro.getStorageSync(favoriteKey)
       if (favorites) {
         const kind = context.selection?.relationship?.role === 'patient' ? 'favorite' : 'personalFavorite'
-        const packet = JSON.parse(String(favorites))
+        const packet = favorites
         const items = Array.isArray(packet) ? packet : packet.items
         const base = Array.isArray(packet) ? undefined : packet.base
         for (const item of items) {
@@ -144,7 +152,15 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
         }
         const ids = new Set(items.map((item: any) => item.id))
         for (const r of Object.values(engine.view().resources) as any[]) if (r.kind === kind && !r.deleted && !ids.has(r.id) && (!base || base.some((entry: any) => entry.id === r.id))) await engine.edit(kind, r.id, null, 'delete')
-        if (Taro.getStorageSync(favoriteKey) === favorites) Taro.removeStorageSync(favoriteKey)
+        // Verify the existing sync engine's persisted receipt before releasing
+        // the source packet. A queued in-memory edit is not a durable handoff.
+        const receipt = await runtime.storage.get(`care-v1:${context.accountId}:${context.familyId}:${context.profileId}`)
+        if (!receipt || JSON.stringify(JSON.parse(receipt)) !== JSON.stringify(engine.archive())) {
+          throw new Error('收藏已保存到本机，同步待办交接尚未核对，请稍后重试同步。')
+        }
+        if (JSON.stringify(favoriteStore.read()) === JSON.stringify(favoriteSnapshot)) {
+          favoriteStore.commit(favoriteSnapshot, { pending: null })
+        }
       }
       const prefKey = scoped('care-pending-personalImagePreferences')
       const prefs = Taro.getStorageSync(prefKey)
@@ -199,7 +215,23 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
           throw error
         }
       }
-    } finally { if (currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) project(engine, context) }
+    } catch (error: any) {
+      if (error?.code === 'SAVED_PHRASE_CAPACITY') {
+        projectAfterSync = false
+        if (!options.automatic) void Taro.showModal({ title: '常用语同步已暂停', content: error.message, showCancel: false })
+      }
+      throw error
+    } finally {
+      if (projectAfterSync && currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) {
+        try { project(engine, context) }
+        catch (error: any) {
+          if (error?.code === 'SAVED_PHRASE_CAPACITY' && !options.automatic) {
+            void Taro.showModal({ title: '常用语同步已暂停', content: error.message, showCancel: false })
+          }
+          throw error
+        }
+      }
+    }
   })().finally(() => { pending = null })
   return pending
 }
@@ -208,9 +240,24 @@ export function startCareWorkspace() {
   configureCareCloudSync({ active: () => Boolean(currentCareContext()?.profileId), sync: synchronizeCareWorkspace })
   const base = apiBaseUrlFor('cloudFeatures')?.replace(/\/$/, '')
   Taro.addInterceptor(chain => {
+    const params = chain.requestParams as typeof chain.requestParams & { __careAiRequestScope?: Parameters<typeof assertCareAiRequestScope>[0] }
+    const frozen = params.__careAiRequestScope
+    if (frozen) {
+      // This local marker is consumed before the network boundary. Never let
+      // a later account/profile/source selection rewrite an earlier request.
+      delete params.__careAiRequestScope
+      assertCareAiRequestScope(frozen)
+      if (!['/gpt/communication/sentences', '/gpt/communication/resegment']
+          .some(path => params.url === frozen.origin + path) ||
+          params.header?.Authorization !== `Bearer ${frozen.token}` ||
+          params.header?.['X-Care-Profile-Id'] !== frozen.profileId ||
+          params.header?.['X-Care-Funding-Id'] !== frozen.fundingId) {
+        throw Object.assign(new Error('AI_REQUEST_CONTEXT_CHANGED'), { code: 'AI_REQUEST_CONTEXT_CHANGED' })
+      }
+      return chain.proceed(params)
+    }
     const context = currentCareContext()
     const fundingId = context?.profileId && runtime.funding(context.profileId)
-    const params = chain.requestParams
     if (base && fundingId && context && params.url.startsWith(base + '/')) {
       params.header = { ...params.header, 'X-Care-Profile-Id': context.profileId, 'X-Care-Funding-Id': fundingId,
         'Idempotency-Key': params.header?.['Idempotency-Key'] || `ai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}` }

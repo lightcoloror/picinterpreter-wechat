@@ -3,9 +3,9 @@ import { describe, expect, test, vi } from 'vitest'
 import { createArasaacPictogramSearchPort } from './arasaacPictogramSearchPort'
 
 function createHarness() {
-  const request = vi.fn(async () => ({
+  const request = vi.fn(async (options: {url: string}) => ({
     statusCode: 200,
-    data: [{ _id: 37331 }]
+    data: [{ _id: 37331, keywords: [{keyword: decodeURIComponent(options.url.split('/').pop()!)}] }]
   }))
   const downloadFile = vi.fn(async () => ({
     statusCode: 200,
@@ -19,7 +19,7 @@ function createHarness() {
     request,
     downloadFile,
     saveFile,
-    port: createArasaacPictogramSearchPort({
+    port: createArasaacPictogramSearchPort({verifyImage: async () => ({status: 'available'}),
       request,
       downloadFile,
       saveFile
@@ -28,6 +28,33 @@ function createHarness() {
 }
 
 describe('ARASAAC pictogram search port', () => {
+  test('uses qualified English fallback and preserves it through explicit caching', async () => {
+    const request=vi.fn(async ({url}:{url:string})=>({statusCode:url.includes('/zh/')?404:200,
+      data:url.includes('/zh/')?[]:[
+        {_id:2855,keywords:[{keyword:'pills'}]},
+        {_id:30117,keywords:[{keyword:'oral medication'},{keyword:'take medicines'}]}
+      ]}))
+    const downloadFile=vi.fn(async()=>({statusCode:200,tempFilePath:'tmp.png'}))
+    const port=createArasaacPictogramSearchPort({verifyImage: async () => ({status: 'available'}),request,downloadFile,saveFile:async()=>({savedFilePath:'wxfile://saved/medicine.png'})})
+    const result=await port.search(['吃药'])
+    expect(request.mock.calls.map(([x])=>decodeURIComponent(x.url).split('/v1/')[1])).toEqual([
+      'pictograms/zh/bestsearch/吃药','pictograms/zh/search/吃药','pictograms/en/bestsearch/take medicines'
+    ])
+    expect(result.value?.map(x=>x.pictogram.source.originalId)).toEqual(['30117'])
+    expect(result.message).not.toContain('不可用')
+    expect(downloadFile).not.toHaveBeenCalled()
+    const picture=result.value![0].pictogram
+    expect(picture.semantics).toMatchObject({queryText:'吃药',lookupText:'take medicines',sourceLanguage:'en',requiresReview:true})
+    const cached=await port.cache(picture)
+    expect(JSON.parse(JSON.stringify(cached.value))).toMatchObject({image:'wxfile://saved/medicine.png',semantics:picture.semantics})
+  })
+  test('distinguishes no matches from outage, without inventing an object substitute', async () => {
+    const request=vi.fn(async()=>({statusCode:404,data:[]}))
+    const port=createArasaacPictogramSearchPort({verifyImage: async () => ({status: 'available'}),request,downloadFile:vi.fn(),saveFile:vi.fn()})
+    expect(await port.search(['回家'])).toEqual({ok:true,message:'暂时没有找到合适图片。',value:[]})
+    // Two exact-language lookups plus the two bounded, audited semantic queries.
+    expect(request).toHaveBeenCalledTimes(8)
+  })
   test.each([['尿片', '2863'], ['一点点', '7209']])('reuses the reviewed lookup for %s and caches only on request', async (token, id) => {
     const harness = createHarness()
     harness.request.mockRejectedValue(new Error('synthetic provider offline'))
@@ -98,7 +125,7 @@ describe('ARASAAC pictogram search port', () => {
         { _id: 3 },
         { _id: 4 },
         { _id: 5 }
-      ]
+      ].map(item => ({...item, keywords: [{keyword: '未收录词'}]}))
     })
 
     const result = await harness.port.search(['未收录词'])
@@ -112,7 +139,7 @@ describe('ARASAAC pictogram search port', () => {
     const harness = createHarness()
     harness.request.mockResolvedValueOnce({
       statusCode: 200,
-      data: [{ _id: 999 }, { _id: 4676 }, { _id: 888 }]
+      data: [999, 4676, 888].map(_id => ({_id, keywords: [{keyword: '慢慢'}]}))
     })
 
     const result = await harness.port.search(['慢慢'])
@@ -169,7 +196,7 @@ describe('ARASAAC pictogram search port', () => {
     const harness = createHarness()
     harness.request
       .mockResolvedValueOnce({ statusCode: 200, data: [] })
-      .mockResolvedValueOnce({ statusCode: 200, data: [{ _id: 456 }] })
+      .mockResolvedValueOnce({ statusCode: 200, data: [{ _id: 456, keywords: [{keyword: '未收录词'}] }] })
 
     const result = await harness.port.search(['未收录词'])
 
@@ -184,7 +211,7 @@ describe('ARASAAC pictogram search port', () => {
     const harness = createHarness()
     harness.request
       .mockRejectedValueOnce(new Error('ranked search unavailable'))
-      .mockResolvedValueOnce({ statusCode: 200, data: [{ _id: 456 }] })
+      .mockResolvedValueOnce({ statusCode: 200, data: [{ _id: 456, keywords: [{keyword: '未收录词'}] }] })
 
     const result = await harness.port.search(['未收录词'])
 

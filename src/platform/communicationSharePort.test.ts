@@ -55,7 +55,8 @@ describe('communication share port', () => {
           expect.objectContaining({ id: 'want' }),
           expect.objectContaining({ id: 'water' })
         ]
-      })
+      }),
+      expect.objectContaining({ isCurrent: expect.any(Function) })
     )
     expect(harness.dependencies.shareImage).toHaveBeenCalledWith(
       'wxfile://receiver-share.png'

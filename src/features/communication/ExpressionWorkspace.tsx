@@ -1,6 +1,7 @@
 import type { Dispatch } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, ScrollView, Text, View } from '@tarojs/components'
+import { useDidHide, useDidShow } from '@tarojs/taro'
 import {
   CANDIDATE_FEEDBACK,
   normalizeExpressionCandidates,
@@ -12,7 +13,15 @@ import {
   createCandidateAutoplayController,
   type CandidateAutoplayController
 } from '@cboard-communication-core/candidateAutoplay'
-import { buildCommunicationAiSentenceRequest } from '@cboard-communication-core/communicationAi'
+import {
+  applyCommunicationAiSentenceResponse,
+  buildCommunicationAiSentenceRequest
+} from '@cboard-communication-core/communicationAi'
+import {
+  attachExpressionDraftRequest,
+  type ExpressionDraftSnapshot,
+  type ExpressionDraftService
+} from '@cboard-communication-core/expressionDraft'
 import type {
   ConversationContext
 } from '@cboard-communication-core/conversationSession'
@@ -46,6 +55,7 @@ import {
 } from '@cboard-communication-core/patientActionLanguage'
 
 import { taroCommunicationAiPort } from '../../platform/taroCommunicationAiPort'
+import { getTaroTextAiAvailability, openTextAiSetup, useTaroTextAiAvailability } from '../../platform/taroTextAiAvailability'
 import { taroCommunicationSharePort } from '../../platform/taroCommunicationSharePort'
 import {
   wechatSpeechPort,
@@ -54,6 +64,7 @@ import {
 import BoardNavigator from './BoardNavigator'
 import PatientActionButton from './PatientActionButton'
 import PictogramImage from '../../components/PictogramImage'
+import ImageRepairControls from '../../components/ImageRepairControls'
 import PhrasePlaybackOverlay from './PhrasePlaybackOverlay'
 import SavedPhrasesPanel from './SavedPhrasesPanel'
 import {
@@ -82,6 +93,8 @@ interface ExpressionWorkspaceProps {
   conversationContext: ConversationContext
   candidateFeedbackSyncAvailable: boolean
   initialCandidateFeedbackDraft: ExpressionCandidateFeedbackDraft | null
+  initialExpressionDraft?: ExpressionDraftSnapshot | null
+  draftService?: ExpressionDraftService
   speechRate: number
   candidateAutoplayDelaySeconds: CommunicationCandidateAutoplayDelay
   pictogramSortMode: CommunicationPictogramSortMode
@@ -93,6 +106,7 @@ interface ExpressionWorkspaceProps {
     id?: string
     outputSignature: string
     candidates: ExpressionCandidate[]
+    rejected?: boolean
   }) => ExpressionCandidateFeedbackDraft | null
   onDiscardCandidateFeedbackDraft: (id: string) => boolean
   onSavePhrase: (entry: ExpressionSavedPhraseEntry) => boolean
@@ -109,6 +123,8 @@ export default function ExpressionWorkspace({
   conversationContext,
   candidateFeedbackSyncAvailable,
   initialCandidateFeedbackDraft,
+  initialExpressionDraft,
+  draftService,
   speechRate,
   candidateAutoplayDelaySeconds,
   pictogramSortMode,
@@ -126,24 +142,56 @@ export default function ExpressionWorkspace({
   )
   const [notice, setNotice] = useState(
     session.restored
-      ? '已从微信本地存储恢复最近一次表达。'
+      ? '已恢复上次表达。请主动选择或播报，恢复不会启动旧倒计时。'
       : '选择图片开始表达。'
   )
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const savedPlaybackCounted = useRef(false)
+  const savedPlaybackPending = useRef(false)
+  const [pendingAutoplayDelayMs, setPendingAutoplayDelayMs] = useState(0)
   const [playbackPhrase, setPlaybackPhrase] =
     useState<CommunicationSavedPhraseEntry | null>(null)
   const [isGeneratingAi, setIsGeneratingAi] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [aiCompletion, setAiCompletion] = useState(0)
   const [candidateFeedbackEntries, setCandidateFeedbackEntries] = useState(
     () =>
       normalizeExpressionCandidates(
-        initialCandidateFeedbackDraft
+        initialExpressionDraft
+          ? initialExpressionDraft.candidateFeedbackEntries
+          : initialCandidateFeedbackDraft
           ? initialCandidateFeedbackDraft.candidates
           : [],
         session.pipeline.candidateSentences
       )
   )
   const [candidateFeedbackNotice, setCandidateFeedbackNotice] = useState('')
+  const [candidatesRejected, setCandidatesRejected] = useState(Boolean(
+    initialExpressionDraft ? initialExpressionDraft.rejected : initialCandidateFeedbackDraft?.rejected
+  ))
+  const candidatesRejectedRef = useRef(candidatesRejected)
+  const rejectionSelectionRef = useRef(session.pipeline.outputSignature)
+  const feedbackInputRef = useRef(initialCandidateFeedbackDraft)
+  feedbackInputRef.current = initialCandidateFeedbackDraft
   const [isExpressionConfirmed, setIsExpressionConfirmed] = useState(false)
+  const restorationMutedRef = useRef(Boolean(session.restored || initialExpressionDraft))
+  // Opening a blank workspace after confirmation is not a new user edit.
+  // Keep the confirmed record association until content actually changes.
+  const settledEntrySignature = useRef(
+    draftService?.getCurrent()?.status === 'confirmed' &&
+    !session.pipeline.outputSnapshot.length && !session.pipeline.candidateSentences.length
+      ? JSON.stringify({ pipeline: session.pipeline, rejected: candidatesRejected, candidateFeedbackEntries })
+      : ''
+  ).current
+  const newExpressionAfterConfirmationRef = useRef(Boolean(settledEntrySignature))
+  const [draftSaveStatus, setDraftSaveStatus] = useState(
+    settledEntrySignature ? '上次表达已确认，可以开始新表达。' : ''
+  )
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false)
+  const [savedDraftSignature, setSavedDraftSignature] = useState(settledEntrySignature)
+  const [pendingAiRecovery, setPendingAiRecovery] = useState(Boolean(initialExpressionDraft?.pendingAi))
+  const clearPendingAiRef = useRef(false)
+  const lastSavedDraftSignatureRef = useRef(settledEntrySignature)
   const speechGenerationRef = useRef(0)
   const speechRateRef = useRef(speechRate)
   const isSpeakingRef = useRef(false)
@@ -151,22 +199,37 @@ export default function ExpressionWorkspace({
   const candidateAutoplayControllerRef =
     useRef<CandidateAutoplayController | null>(null)
   const aiGenerationRef = useRef(0)
+  const aiPendingRef = useRef(false)
+  const textAi = useTaroTextAiAvailability()
+  const aiContextRef = useRef(textAi.contextKey)
+  const pageActiveRef = useRef(true)
+  const shareGenerationRef = useRef(0)
+  const sharePendingRef = useRef(false)
   const candidateFeedbackDraftIdRef = useRef<string | null>(
     initialCandidateFeedbackDraft
       ? initialCandidateFeedbackDraft.id
       : null
   )
   const confirmedHistoryIdRef = useRef<string | null>(null)
-  const selectionSignature = session.selectedTiles
-    .map(tile => `${tile.boardId}:${tile.id}`)
-    .join('|')
+  // Namesakes may share a tile ID; invalidation follows concrete identity and
+  // media snapshot, never only IDs or display labels.
+  const selectionSignature = JSON.stringify(session.pipeline.outputSnapshot)
   const selectionSignatureRef = useRef(selectionSignature)
+  const previousAiSelectionRef = useRef(selectionSignature)
   selectionSignatureRef.current = selectionSignature
   speechRateRef.current = speechRate
   playbackOutputRef.current = session.selectedTiles
   const candidateSignature = session.pipeline.candidateSentences.join('\u001f')
   const candidateFeedbackSignatureRef = useRef(candidateSignature)
   const selectedSentence = getSelectedExpressionSentence(session.pipeline)
+  // Include identity and meaning, not just the visible text of a namesake.
+  const shareSignature = JSON.stringify([
+    conversationContext.sessionId, selectionSignature, session.pipeline.outputSignature,
+    candidateSignature, selectedSentence
+  ])
+  const shareSignatureRef = useRef(shareSignature)
+  const previousShareSignatureRef = useRef(shareSignature)
+  shareSignatureRef.current = shareSignature
   const activeBoard = getActiveNavigationBoard(boards, boardNavigation)
   const visibleTiles = sortPictogramsForDisplay(
     getVisibleBoardTiles(boards, boardNavigation),
@@ -187,12 +250,55 @@ export default function ExpressionWorkspace({
       ),
     [activeBoard, boards, pictogramOrdering, session.selectedTiles]
   )
+  const draftSnapshot: ExpressionDraftSnapshot = {
+    pipeline: session.pipeline,
+    rejected: candidatesRejected,
+    candidateFeedbackEntries
+  }
+  const draftSnapshotRef = useRef(draftSnapshot)
+  draftSnapshotRef.current = draftSnapshot
+  const draftSignature = JSON.stringify(draftSnapshot)
+  // A successful write belongs to that exact revision, not the next render.
+  // Keep the old success label hidden while newly edited content is pending.
+  const draftVisibleSaveStatus = draftSaveFailed || isExpressionConfirmed
+    ? draftSaveStatus
+    : savedDraftSignature === draftSignature ? draftSaveStatus : '正在保存到本机…'
+
+  const persistDraft = (startNew = false) => {
+    if (!draftService) return true
+    try {
+      const record = draftService.save({
+        ...draftSnapshotRef.current,
+        ...(clearPendingAiRef.current ? { pendingAi: null } : {})
+      }, { startNew: (startNew || newExpressionAfterConfirmationRef.current) &&
+        draftService.getCurrent()?.status === 'confirmed' })
+      newExpressionAfterConfirmationRef.current = false
+      clearPendingAiRef.current = false
+      lastSavedDraftSignatureRef.current = JSON.stringify(draftSnapshotRef.current)
+      setSavedDraftSignature(lastSavedDraftSignatureRef.current)
+      setPendingAiRecovery(Boolean(record.snapshot.pendingAi))
+      setDraftSaveFailed(false)
+      setDraftSaveStatus(record.status === 'confirmed' ? '表达已确认' : '已保存到本机')
+      return true
+    } catch (error) {
+      setDraftSaveFailed(true)
+      setDraftSaveStatus(error instanceof Error ? error.message : '草稿未能保存到本机，请重试。')
+      return false
+    }
+  }
+  useEffect(() => {
+    if (isExpressionConfirmed || lastSavedDraftSignatureRef.current === draftSignature) return
+    persistDraft()
+    // The signature includes ordered private references, feedback and selection.
+    // Persistence is local only and does not retain undo/playback controller state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftSignature, isExpressionConfirmed])
   useEffect(() => {
     if (candidateFeedbackSignatureRef.current === candidateSignature) return
 
     candidateFeedbackSignatureRef.current = candidateSignature
     const draftId = candidateFeedbackDraftIdRef.current
-    if (draftId) onDiscardCandidateFeedbackDraft(draftId)
+    if (draftId && !candidatesRejectedRef.current) onDiscardCandidateFeedbackDraft(draftId)
     candidateFeedbackDraftIdRef.current = null
     confirmedHistoryIdRef.current = null
     setIsExpressionConfirmed(false)
@@ -239,7 +345,8 @@ export default function ExpressionWorkspace({
         output,
         speechPort: wechatSpeechPort,
         audioPort: wechatTileAudioPort,
-        rate: speechRateRef.current
+        rate: speechRateRef.current,
+        isCurrent: () => generation === speechGenerationRef.current
       })
       if (generation !== speechGenerationRef.current) return
       if (!result.ok) {
@@ -254,7 +361,9 @@ export default function ExpressionWorkspace({
       isSpeakingRef.current = false
       setIsSpeaking(false)
       setNotice(queue.length > 1 ? '候选句已全部播报。' : '朗读完成。')
+      return true
     }
+    return false
   }
 
   if (!candidateAutoplayControllerRef.current) {
@@ -262,12 +371,38 @@ export default function ExpressionWorkspace({
       createCandidateAutoplayController({
         setTimer: (callback, delay) => setTimeout(callback, delay),
         clearTimer: timer => clearTimeout(timer),
-        playCandidates: playCandidateQueue,
-        stopPlayback: () => stopSpeechPlayback(false)
+        playCandidates: async candidates => {
+          if (pageActiveRef.current && !candidatesRejectedRef.current) await playCandidateQueue(candidates)
+        },
+        stopPlayback: () => stopSpeechPlayback(false),
+        onPendingChange: setPendingAutoplayDelayMs
       })
   }
 
   useEffect(() => {
+    if (rejectionSelectionRef.current !== session.pipeline.outputSignature) {
+      rejectionSelectionRef.current = session.pipeline.outputSignature
+      candidatesRejectedRef.current = Boolean(feedbackInputRef.current?.rejected)
+      setCandidatesRejected(candidatesRejectedRef.current)
+      candidateFeedbackDraftIdRef.current = feedbackInputRef.current?.id || null
+      confirmedHistoryIdRef.current = null
+      setIsExpressionConfirmed(false)
+      setCandidateFeedbackEntries(normalizeExpressionCandidates(
+        feedbackInputRef.current?.candidates || [], session.pipeline.candidateSentences
+      ))
+      setCandidateFeedbackNotice('')
+    }
+    if (previousAiSelectionRef.current !== selectionSignature) {
+      previousAiSelectionRef.current = selectionSignature
+      aiGenerationRef.current += 1
+      aiPendingRef.current = false
+      setIsGeneratingAi(false)
+    }
+    if (!pageActiveRef.current || candidatesRejectedRef.current || restorationMutedRef.current) {
+      candidateAutoplayControllerRef.current?.cancel()
+      return
+    }
+    if (aiPendingRef.current) return
     const controller = candidateAutoplayControllerRef.current
     if (controller) {
       controller.schedule(
@@ -276,22 +411,55 @@ export default function ExpressionWorkspace({
       )
     }
   }, [
+    aiCompletion,
     candidateAutoplayDelaySeconds,
     candidateSignature,
     selectionSignature,
+    session.pipeline.outputSignature,
     session.pipeline.candidateSentences
   ])
 
-  useEffect(() => () => {
-    const controller = candidateAutoplayControllerRef.current
-    if (controller) {
-      controller.cancel({ stopActivePlayback: false })
+  useEffect(() => {
+    pageActiveRef.current = true
+    return () => {
+      pageActiveRef.current = false
+      shareGenerationRef.current += 1
+      sharePendingRef.current = false
+      const controller = candidateAutoplayControllerRef.current
+      if (controller) {
+        controller.cancel({ stopActivePlayback: false })
+      }
+      speechGenerationRef.current += 1
+      isSpeakingRef.current = false
+      aiGenerationRef.current += 1
+      aiPendingRef.current = false
+      stopExpressionPlayback(wechatSpeechPort, wechatTileAudioPort)
     }
-    speechGenerationRef.current += 1
-    isSpeakingRef.current = false
-    aiGenerationRef.current += 1
-    stopExpressionPlayback(wechatSpeechPort, wechatTileAudioPort)
   }, [])
+
+  useEffect(() => {
+    if (previousShareSignatureRef.current === shareSignature) return
+    previousShareSignatureRef.current = shareSignature
+    const wasPending = sharePendingRef.current
+    shareGenerationRef.current += 1
+    sharePendingRef.current = false
+    setIsSharing(false)
+    if (wasPending) setNotice('表达已改变，请重新确认要复制的句子。')
+  }, [shareSignature])
+
+  const invalidatePendingShare = () => {
+    shareGenerationRef.current += 1
+    sharePendingRef.current = false
+    setIsSharing(false)
+  }
+
+  // Same contract as Web: explicit patient actions own the current expression.
+  // Invalidate before awaiting anything; an old request cannot clear a new one.
+  const invalidatePendingAi = () => {
+    aiGenerationRef.current += 1
+    aiPendingRef.current = false
+    setIsGeneratingAi(false)
+  }
 
   const handlePatientInteraction = () => {
     const controller = candidateAutoplayControllerRef.current
@@ -303,10 +471,43 @@ export default function ExpressionWorkspace({
     }
   }
 
+  const handleWorkspaceHide = () => {
+    // Flush rendered edits through the same verified repository before leaving.
+    // This is not a delayed background save and does not start AI or playback.
+    if (draftService && !isExpressionConfirmed &&
+      lastSavedDraftSignatureRef.current !== JSON.stringify(draftSnapshotRef.current)) persistDraft()
+    pageActiveRef.current = false
+    const wasCopying = sharePendingRef.current
+    const wasGenerating = aiPendingRef.current
+    invalidatePendingShare()
+    invalidatePendingAi()
+    handlePatientInteraction()
+    if (wasCopying) setNotice('已离开复制页面；返回后请重新确认剪贴板中的句子。')
+    else if (wasGenerating) {
+      if (draftService) setPendingAiRecovery(Boolean(draftService.getCurrent()?.snapshot.pendingAi))
+      setNotice('已离开页面，旧 AI 结果不再更新此页；返回后可主动核对上次结果。')
+    }
+  }
+  useDidHide(handleWorkspaceHide)
+  useDidShow(() => {
+    pageActiveRef.current = true
+    if (draftService) setPendingAiRecovery(Boolean(draftService.getCurrent()?.snapshot.pendingAi))
+  })
+  useEffect(() => {
+    if (aiContextRef.current === textAi.contextKey) return
+    aiContextRef.current = textAi.contextKey
+    invalidatePendingAi()
+    candidateAutoplayControllerRef.current?.cancel()
+    stopSpeechPlayback()
+  }, [textAi.contextKey])
+
   const handleEditSelectedTile = (
     action: ExpressionSessionAction,
     message: string
   ) => {
+    restorationMutedRef.current = false
+    invalidatePendingShare()
+    invalidatePendingAi()
     handlePatientInteraction()
     dispatch(action)
     setNotice(message)
@@ -318,12 +519,35 @@ export default function ExpressionWorkspace({
       return
     }
 
+    restorationMutedRef.current = false
+    invalidatePendingShare()
+    invalidatePendingAi()
+    handlePatientInteraction()
     onPictogramUsed(tile.boardId, tile.id)
     dispatch({ type: 'add-tile', tile })
     setNotice(`已加入「${tile.label}」。`)
   }
 
+  const repairSelectedImage = (index: number, tile: BoardDTO['tiles'][number]) => {
+    const selectedTiles = session.selectedTiles.map((item, i) => i === index ? tile : item)
+    const pipeline = { ...session.pipeline, outputSnapshot: selectedTiles }
+    try {
+      if (draftService) draftService.save({ ...draftSnapshotRef.current, pipeline, pendingAi: null },
+        { startNew: draftService.getCurrent()?.status === 'confirmed' })
+    } catch (_) {
+      setDraftSaveFailed(true); setDraftSaveStatus('图片修改尚未保存，请重试确认。'); return false
+    }
+    invalidatePendingShare(); invalidatePendingAi(); handlePatientInteraction(); stopSpeechPlayback()
+    restorationMutedRef.current = true
+    setIsExpressionConfirmed(false)
+    dispatch({ type: 'replace-session', state: { ...session, selectedTiles, pipeline } })
+    return true
+  }
+
   const handleConfirm = () => {
+    if (candidatesRejectedRef.current) return
+    invalidatePendingShare()
+    invalidatePendingAi()
     const historyEntry = buildExpressionHistoryEntry(
       session.pipeline,
       candidateFeedbackEntries
@@ -335,6 +559,10 @@ export default function ExpressionWorkspace({
 
     if (isExpressionConfirmed) {
       setNotice('这次表达已经确认。')
+      return
+    }
+    if (!persistDraft()) {
+      setNotice('草稿尚未可靠保存，请重试保存后再确认。')
       return
     }
 
@@ -356,10 +584,14 @@ export default function ExpressionWorkspace({
     if (draftId) onDiscardCandidateFeedbackDraft(draftId)
     candidateFeedbackDraftIdRef.current = null
     setIsExpressionConfirmed(true)
+    setDraftSaveStatus('表达已确认')
     setNotice('表达已确认，并保存到微信本地存储。')
   }
 
   const handleSpeech = async () => {
+    if (candidatesRejectedRef.current) return
+    invalidatePendingShare()
+    invalidatePendingAi()
     if (!selectedSentence) {
       setNotice('请先选择图片并生成句子。')
       return
@@ -371,12 +603,17 @@ export default function ExpressionWorkspace({
   }
 
   const handlePlayAllCandidates = async () => {
+    if (candidatesRejectedRef.current) return
+    invalidatePendingShare()
+    invalidatePendingAi()
     const controller = candidateAutoplayControllerRef.current
     if (controller) controller.cancel()
     await playCandidateQueue(session.pipeline.candidateSentences)
   }
 
   const handleStopSpeech = () => {
+    invalidatePendingShare()
+    invalidatePendingAi()
     const controller = candidateAutoplayControllerRef.current
     if (controller) {
       controller.cancel({ stopActivePlayback: false })
@@ -385,7 +622,58 @@ export default function ExpressionWorkspace({
     setNotice('已停止朗读并取消自动播报。')
   }
 
+  const handleRejectCandidates = () => {
+    if (!session.pipeline.candidateSentences.length) return
+    candidatesRejectedRef.current = true
+    setCandidatesRejected(true)
+    handleStopSpeech()
+    setIsExpressionConfirmed(false)
+    confirmedHistoryIdRef.current = null
+    setNotice('已停止这组候选。图片已保留，请调整图片，或撤销拒绝后手动选择。')
+    try {
+      const draft = onSaveCandidateFeedbackDraft({
+        ...(!isExpressionConfirmed && candidateFeedbackDraftIdRef.current
+          ? { id: candidateFeedbackDraftIdRef.current } : {}),
+        outputSignature: session.pipeline.outputSignature,
+        candidates: candidateFeedbackEntries,
+        rejected: true
+      })
+      if (!draft?.id) throw new Error('Rejection not saved')
+      candidateFeedbackDraftIdRef.current = draft.id
+      setCandidateFeedbackNotice('')
+    } catch (_) {
+      setCandidateFeedbackNotice('本次已停止，但拒绝状态未能保存，重开页面可能丢失；请重试保存。')
+    }
+  }
+
+  const handleUndoRejection = () => {
+    if (!candidatesRejectedRef.current) return
+    handleStopSpeech()
+    try {
+      const id = candidateFeedbackDraftIdRef.current
+      if (id && onDiscardCandidateFeedbackDraft(id) === false)
+        throw new Error('Rejection not removed')
+    } catch (_) {
+      setCandidateFeedbackNotice('撤销未能保存，候选仍保持停止，请重试。')
+      return
+    }
+    candidateFeedbackDraftIdRef.current = null
+    candidatesRejectedRef.current = false
+    setCandidatesRejected(false)
+    setCandidateFeedbackEntries(normalizeExpressionCandidates([], session.pipeline.candidateSentences))
+    setCandidateFeedbackNotice('')
+    setNotice('已恢复候选，请手动选择；不会自动播报或再次调用 AI。')
+  }
+
   const handleSelectCandidate = async (sentence: string, index: number) => {
+    if (candidatesRejectedRef.current) return
+    restorationMutedRef.current = false
+    if (index !== session.pipeline.selectedIndex) {
+      confirmedHistoryIdRef.current = null
+      setIsExpressionConfirmed(false)
+    }
+    invalidatePendingShare()
+    invalidatePendingAi()
     const controller = candidateAutoplayControllerRef.current
     if (controller) controller.cancel()
     dispatch({ type: 'select-candidate', index })
@@ -396,6 +684,8 @@ export default function ExpressionWorkspace({
     candidateIndex: number,
     feedback: 'up' | 'down'
   ) => {
+    if (candidatesRejectedRef.current) return
+    invalidatePendingAi()
     const next = toggleExpressionCandidateFeedback(
       candidateFeedbackEntries,
       candidateIndex,
@@ -464,70 +754,150 @@ export default function ExpressionWorkspace({
       : null
 
   const handleSavePhrase = () => {
+    if (candidatesRejectedRef.current) return
+    invalidatePendingShare()
+    invalidatePendingAi()
     const savedPhrase = buildExpressionSavedPhraseEntry(session.pipeline)
     if (!savedPhrase) {
       setNotice('请先选择图片并生成一句话。')
       return
     }
 
-    setNotice(
-      onSavePhrase(savedPhrase)
-        ? '已收藏为常用语，下次可以一键使用。'
-        : '常用语保存失败，请稍后再试。'
-    )
+    try {
+      if (!onSavePhrase(savedPhrase)) throw new Error('本次收藏尚未保存。')
+      setNotice('已收藏为常用语，下次可以一键使用。')
+    } catch (error) {
+      setNotice(`${(error as Error).message || '常用语保存失败。'} 当前表达已保留，请整理后或稍后重试收藏。`)
+    }
   }
 
   const handleReusePhrase = (item: CommunicationSavedPhraseEntry) => {
-    if (!onReusePhrase(item)) {
-      setNotice('这条常用语引用的图片已不存在，暂时无法使用。')
+    if (candidatesRejectedRef.current) {
+      setNotice('请先撤销拒绝，或调整已选图片。')
       return
+    }
+    restorationMutedRef.current = false
+    invalidatePendingShare()
+    invalidatePendingAi()
+    handlePatientInteraction()
+    if (!onReusePhrase(item)) {
+      setNotice('这条常用语暂时未能载入，原内容已保留，请重试。')
+      return
+    }
+
+    // Reusing the same saved sentence is a deliberate new expression even when
+    // its content signature equals the just-confirmed one. Do not alter history.
+    if (draftService?.getCurrent()?.status === 'confirmed') {
+      newExpressionAfterConfirmationRef.current = true
+      lastSavedDraftSignatureRef.current = ''
+      confirmedHistoryIdRef.current = null
+      candidateFeedbackDraftIdRef.current = null
+      setCandidateFeedbackEntries(normalizeExpressionCandidates([], session.pipeline.candidateSentences))
+      setIsExpressionConfirmed(false)
     }
 
     setNotice(`已载入常用语「${item.sentence}」。`)
   }
 
   const handleShareExpression = async () => {
+    if (!pageActiveRef.current || candidatesRejectedRef.current || sharePendingRef.current) return
+    if (shareSignature !== shareSignatureRef.current) return
     if (!selectedSentence) {
       setNotice('请先选择一句话再分享。')
       return
     }
 
-    setNotice('正在准备分享…')
-    const result =
-      await taroCommunicationSharePort.shareExpressionText(selectedSentence)
-    setNotice(result.message)
+    invalidatePendingAi()
+    handlePatientInteraction()
+    const generation = ++shareGenerationRef.current
+    const isCurrent = () => pageActiveRef.current && !candidatesRejectedRef.current &&
+      generation === shareGenerationRef.current && shareSignature === shareSignatureRef.current
+    sharePendingRef.current = true
+    setIsSharing(true)
+    setNotice('正在复制当前句子…')
+    try {
+      const result = await taroCommunicationSharePort.shareExpressionText(selectedSentence, { isCurrent })
+      if (isCurrent()) setNotice(result.message)
+    } catch (_) {
+      if (isCurrent()) setNotice('句子复制失败，当前表达仍会保留，请重试。')
+    } finally {
+      if (isCurrent()) {
+        sharePendingRef.current = false
+        setIsSharing(false)
+      }
+    }
   }
 
   const handlePlaySavedPhrase = async (
     item: CommunicationSavedPhraseEntry
   ) => {
+    if (savedPlaybackPending.current) return
+    invalidatePendingShare()
+    invalidatePendingAi()
     handlePatientInteraction()
     setPlaybackPhrase(item)
-    onUseSavedPhrase(item)
+    savedPlaybackCounted.current = false
+    savedPlaybackPending.current = true
     setNotice(`正在播报常用语「${item.sentence}」。`)
-    await playCandidateQueue([item.sentence], item.output)
+    const playback = playCandidateQueue([item.sentence], item.output)
+    const ticket = speechGenerationRef.current
+    const success = await playback
+    if (ticket !== speechGenerationRef.current) return
+    savedPlaybackPending.current = false
+    if (success && !savedPlaybackCounted.current) {
+      savedPlaybackCounted.current = true
+      onUseSavedPhrase(item)
+    }
   }
 
   const handleReplaySavedPhrase = async () => {
-    if (!playbackPhrase) return
+    if (!playbackPhrase || savedPlaybackPending.current) return
+    invalidatePendingShare()
     handlePatientInteraction()
-    await playCandidateQueue(
+    savedPlaybackPending.current = true
+    const playback = playCandidateQueue(
       [playbackPhrase.sentence],
       playbackPhrase.output
     )
+    const ticket = speechGenerationRef.current
+    const success = await playback
+    if (ticket !== speechGenerationRef.current) return
+    savedPlaybackPending.current = false
+    if (success && !savedPlaybackCounted.current) {
+      savedPlaybackCounted.current = true
+      onUseSavedPhrase(playbackPhrase)
+    }
+  }
+
+  const handleViewSavedPhrase = (item: CommunicationSavedPhraseEntry) => {
+    invalidatePendingShare()
+    invalidatePendingAi()
+    handlePatientInteraction()
+    candidateAutoplayControllerRef.current?.cancel()
+    stopSpeechPlayback(false)
+    savedPlaybackPending.current = false
+    savedPlaybackCounted.current = false
+    setPlaybackPhrase(item)
+    setNotice('仅查看，点击“播报整句”才会播放。')
   }
 
   const handleCloseSavedPhrasePlayback = () => {
+    savedPlaybackPending.current = false
+    savedPlaybackCounted.current = false
+    invalidatePendingShare()
     const controller = candidateAutoplayControllerRef.current
     if (controller) {
       controller.cancel({ stopActivePlayback: false })
     }
     stopSpeechPlayback(false)
     setPlaybackPhrase(null)
-    setNotice('常用语播报已完成，当前表达保持不变。')
+    setNotice('已返回，当前表达保持不变。')
   }
 
   const handleGenerateAiCandidates = async () => {
+    if (candidatesRejectedRef.current || aiPendingRef.current) return
+    const availability = getTaroTextAiAvailability()
+    if (!availability.available) { setNotice(availability.message); return }
     const request = buildCommunicationAiSentenceRequest({
       output: session.pipeline.outputSnapshot,
       context: conversationContext,
@@ -537,33 +907,68 @@ export default function ExpressionWorkspace({
       setNotice('请先选择图片，再使用 AI 优化候选句。')
       return
     }
+    if (!persistDraft(true)) {
+      setNotice('草稿尚未可靠保存，未发起 AI 请求；请先重试保存。')
+      return
+    }
+    if (draftService) {
+      attachExpressionDraftRequest(request, draftService)
+    }
 
+    restorationMutedRef.current = false
+    confirmedHistoryIdRef.current = null
+    setIsExpressionConfirmed(false)
+    invalidatePendingShare()
     const generation = ++aiGenerationRef.current
     const requestedSignature = selectionSignature
+    aiPendingRef.current = true
+    candidateAutoplayControllerRef.current?.cancel()
     setIsGeneratingAi(true)
     setNotice('正在请求 AI 候选句，本地候选仍然可用。')
-    const result = await taroCommunicationAiPort.generateSentences({
-      pictogramLabels: request.pictogramLabels,
-      candidateCount: request.candidateCount,
-      recentSentences: request.context.recentSentences,
-      candidateFeedback: request.context.candidateFeedback,
-      scene: request.context.scene
-    })
-    if (
-      generation !== aiGenerationRef.current ||
-      requestedSignature !== selectionSignatureRef.current
-    ) {
-      return
-    }
-
-    setIsGeneratingAi(false)
-    if (!result.ok || !result.value) {
+    let receivedCandidates = false
+    try {
+      const result = await taroCommunicationAiPort.generateSentences(request)
+      if (
+        generation !== aiGenerationRef.current ||
+        availability.contextKey !== getTaroTextAiAvailability().contextKey ||
+        requestedSignature !== selectionSignatureRef.current
+      ) return
+      if (!result.ok || !result.value) {
+        setNotice(result.message)
+        return
+      }
+      if (draftService) {
+        // Persist returned candidates together with clearing their pending
+        // ticket, even when the provider repeats the same visible sentences.
+        const pipeline = applyCommunicationAiSentenceResponse(session.pipeline, result.value)
+        draftSnapshotRef.current = {
+          ...draftSnapshotRef.current,
+          pipeline,
+          candidateFeedbackEntries: normalizeExpressionCandidates(
+            draftSnapshotRef.current.candidateFeedbackEntries, pipeline.candidateSentences
+          )
+        }
+        clearPendingAiRef.current = true
+        persistDraft()
+      }
+      dispatch({ type: 'apply-ai-candidates', response: result.value })
+      receivedCandidates = true
       setNotice(result.message)
-      return
+    } catch (_) {
+      if (generation === aiGenerationRef.current && requestedSignature === selectionSignatureRef.current)
+        setNotice('AI 暂时不可用，已保留本地候选，可以稍后重试。')
+    } finally {
+      if (generation === aiGenerationRef.current) {
+        if (draftService)
+          setPendingAiRecovery(Boolean(draftService.getCurrent()?.snapshot.pendingAi))
+        aiPendingRef.current = false
+        setIsGeneratingAi(false)
+        // An uncertain request is still awaiting reconciliation. Do not replace
+        // that notice by restarting playback of the old local candidates.
+        if (receivedCandidates && requestedSignature === selectionSignatureRef.current)
+          setAiCompletion(value => value + 1)
+      }
     }
-
-    dispatch({ type: 'apply-ai-candidates', response: result.value })
-    setNotice(result.message)
   }
 
   return (
@@ -571,6 +976,10 @@ export default function ExpressionWorkspace({
       className='workspace workspace--expression'
       onTouchStart={handlePatientInteraction}
     >
+      {draftService && <View className='expression-draft-save-state'>
+        <Text id='expression-draft-save-status'>{draftVisibleSaveStatus}</Text>
+        {draftSaveFailed && <Button id='expression-draft-retry-save-button' onClick={() => persistDraft()}>重试保存草稿</Button>}
+      </View>}
       <View className='panel expression-board-panel'>
         <View className='section-heading'>
           <Text className='section-heading__index'>01</Text>
@@ -589,7 +998,7 @@ export default function ExpressionWorkspace({
             {session.selectedTiles.length ? (
               session.selectedTiles.map((tile, index) => (
                 <View className='expression-chip' key={`${tile.id}-${index}`}>
-                  <PictogramImage
+                  <PictogramImage localOnly
                     className='expression-chip__image'
                     src={tile.image}
                     label={tile.label}
@@ -597,6 +1006,11 @@ export default function ExpressionWorkspace({
                     video={tile.video}
                   />
                   <Text>{tile.label}</Text>
+                  <ImageRepairControls tile={tile}
+                    operationKey={JSON.stringify([draftService?.getCurrent()?.id, index, session.selectedTiles])}
+                    onAdopt={nextTile => repairSelectedImage(index, nextTile)}
+                    onKeepText={() => repairSelectedImage(index, { ...tile, image: '' })}
+                  />
                   <View className='expression-chip__actions'>
                     <PatientActionButton
                       action={PATIENT_ACTION_IDS.moveLeft}
@@ -650,19 +1064,32 @@ export default function ExpressionWorkspace({
 
         <View className='sequence-actions'>
           <PatientActionButton
-            action={PATIENT_ACTION_IDS.undo}
+            action={PATIENT_ACTION_IDS.remove}
+            id='expression-backspace-button'
+            outputIcon='backspace'
             className='button button--quiet'
             disabled={!session.selectedTiles.length}
-            onClick={() => dispatch({ type: 'remove-last' })}
-            label='撤回'
-            ariaLabel='撤回最后一张图片'
+            onClick={() => handleEditSelectedTile({ type: 'remove-last' }, '已退格，可以撤销删除。')}
+            label='退格'
+            ariaLabel='删除最后一张图片'
+          />
+          <PatientActionButton
+            action={PATIENT_ACTION_IDS.undo}
+            id='expression-undo-delete-button'
+            outputIcon='undo'
+            className='button button--quiet'
+            disabled={!session.undoHistory?.length}
+            onClick={() => handleEditSelectedTile({ type: 'undo-delete' }, '已恢复删除前的图片和候选句。')}
+            label='撤销删除'
+            ariaLabel='撤销上次删除，恢复图片序列'
           />
           <PatientActionButton
             action={PATIENT_ACTION_IDS.clear}
             id='expression-clear-button'
+            outputIcon='clear'
             className='button button--quiet'
-            disabled={!session.selectedTiles.length}
-            onClick={() => dispatch({ type: 'clear' })}
+            disabled={!session.selectedTiles.length && !session.pipeline.candidateSentences.length}
+            onClick={() => handleEditSelectedTile({ type: 'clear' }, '已清空，可以撤销删除。')}
             label='清空'
             ariaLabel='清空当前图片序列'
           />
@@ -778,6 +1205,7 @@ export default function ExpressionWorkspace({
         items={savedPhrases}
         onReuse={handleReusePhrase}
         onPlay={handlePlaySavedPhrase}
+        onView={handleViewSavedPhrase}
       />
       <PhrasePlaybackOverlay
         item={playbackPhrase}
@@ -801,7 +1229,9 @@ export default function ExpressionWorkspace({
         </View>
 
         <View className='candidate-list'>
-          {session.pipeline.candidateSentences.length ? (
+          {candidatesRejected ? (
+            <Text className='candidate-list__empty'>已停止这组候选。图片已保留，请调整图片，或撤销拒绝后手动选择。</Text>
+          ) : session.pipeline.candidateSentences.length ? (
             session.pipeline.candidateSentences.map((sentence, index) => (
               <View className='candidate-row' key={sentence}>
                 <Button
@@ -872,10 +1302,38 @@ export default function ExpressionWorkspace({
             '可评价候选句；评价不会触发或中断朗读。'}
         </Text>
         <Text className='storage-notice'>
-          {candidateAutoplayDelaySeconds
-            ? `${candidateAutoplayDelaySeconds} 秒无操作后自动播报全部候选句；触摸或滚动可取消。`
+          {candidatesRejected
+            ? '已暂停自动播报。'
+            : pendingAutoplayDelayMs
+            ? `${pendingAutoplayDelayMs / 1000} 秒无操作后自动播报全部候选句；触摸或滚动可取消。`
+            : isSpeaking
+            ? '正在播报。'
+            : candidateAutoplayDelaySeconds
+            ? '当前不会自动播报，请手动选择一句或全部播报。'
             : '候选句自动播报已关闭，可手动选择一句或全部播报。'}
         </Text>
+        {!!session.selectedTiles.length && (
+          <View className='primary-actions'>
+            <PatientActionButton
+              action={PATIENT_ACTION_IDS.notUnderstood}
+              id='expression-reject-candidates-button'
+              className='button button--outline'
+              onClick={handleRejectCandidates}
+              label='都不对'
+              ariaLabel='这组候选都不对，停止并保留图片'
+            />
+            {candidatesRejected && (
+              <PatientActionButton
+                action={PATIENT_ACTION_IDS.undo}
+                id='expression-undo-rejection-button'
+                className='button button--outline'
+                onClick={handleUndoRejection}
+                label='撤销拒绝'
+                ariaLabel='撤销拒绝'
+              />
+            )}
+          </View>
+        )}
 
         <View className='section-heading expression-finish-heading'>
           <Text className='section-heading__index'>03</Text>
@@ -890,17 +1348,24 @@ export default function ExpressionWorkspace({
             action={PATIENT_ACTION_IDS.improve}
             id='expression-ai-candidates-button'
             className='button button--ai'
-            disabled={!session.selectedTiles.length || isGeneratingAi}
+            disabled={!textAi.available || candidatesRejected || !session.selectedTiles.length || isGeneratingAi}
             onClick={() => void handleGenerateAiCandidates()}
-            label={isGeneratingAi ? '生成中' : '优化'}
+            label={isGeneratingAi ? '核对中' : pendingAiRecovery ? '核对上次结果' : '优化'}
             ariaLabel={
-              isGeneratingAi ? '正在生成候选句' : 'AI 优化候选句'
+              isGeneratingAi ? '正在请求候选句' : pendingAiRecovery ? '核对上次 AI 结果' : 'AI 优化候选句'
             }
           />
+          {!textAi.available && <View id='expression-text-ai-availability'>
+            <Text>{textAi.message}</Text>
+            {textAi.action && <Button onClick={() => void openTextAiSetup(textAi.action)}>
+              {textAi.action === 'login' ? '前往登录' : '选择档案与额度'}
+            </Button>}
+          </View>}
           <PatientActionButton
             action={PATIENT_ACTION_IDS.confirm}
             id='expression-confirm-button'
             className='button button--primary'
+            disabled={candidatesRejected || !selectedSentence || isExpressionConfirmed}
             onClick={handleConfirm}
             label='确认'
             ariaLabel='确认并保存当前表达'
@@ -908,7 +1373,7 @@ export default function ExpressionWorkspace({
           <PatientActionButton
             action={PATIENT_ACTION_IDS.play}
             className='button button--outline'
-            disabled={!selectedSentence || isSpeaking}
+            disabled={candidatesRejected || !selectedSentence || isSpeaking}
             onClick={handleSpeech}
             label={isSpeaking ? '朗读中' : '朗读'}
             ariaLabel={isSpeaking ? '正在朗读当前句子' : '朗读当前句子'}
@@ -916,7 +1381,7 @@ export default function ExpressionWorkspace({
           <PatientActionButton
             action={PATIENT_ACTION_IDS.playAll}
             className='button button--outline'
-            disabled={!session.pipeline.candidateSentences.length || isSpeaking}
+            disabled={candidatesRejected || !session.pipeline.candidateSentences.length || isSpeaking}
             onClick={() => void handlePlayAllCandidates()}
             label='全播'
             ariaLabel='依次朗读全部候选句'
@@ -932,7 +1397,7 @@ export default function ExpressionWorkspace({
           <PatientActionButton
             action={PATIENT_ACTION_IDS.save}
             className='button button--favorite'
-            disabled={!selectedSentence}
+            disabled={candidatesRejected || !selectedSentence}
             onClick={handleSavePhrase}
             label='收藏'
             ariaLabel='收藏当前句子为常用语'
@@ -941,10 +1406,10 @@ export default function ExpressionWorkspace({
             action={PATIENT_ACTION_IDS.share}
             id='expression-share-button'
             className='button button--outline'
-            disabled={!selectedSentence}
+            disabled={candidatesRejected || !selectedSentence || isSharing}
             onClick={() => void handleShareExpression()}
-            label='分享'
-            ariaLabel='复制分享当前句子'
+            label={isSharing ? '复制中' : '分享'}
+            ariaLabel={isSharing ? '正在复制当前句子' : '复制分享当前句子'}
           />
         </View>
         <View

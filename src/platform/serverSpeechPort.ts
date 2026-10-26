@@ -132,6 +132,9 @@ export function createServerSpeechPort(
     const filePath = activeFilePath
     activeFilePath = ''
     releaseAudio()
+    // Device playback has ended. File cleanup is best-effort and must not
+    // leave the UI waiting forever if the platform omits an unlink callback.
+    settle(result)
     if (filePath) {
       try {
         await dependencies.unlinkFile(filePath)
@@ -139,7 +142,6 @@ export function createServerSpeechPort(
         // A cleanup failure must not leave the communication UI busy.
       }
     }
-    settle(result)
   }
 
   const stop = () => {
@@ -247,6 +249,7 @@ export function createServerSpeechPort(
           try {
             filePath = await dependencies.writeTempAudio(response.data)
           } catch (error) {
+            if (requestGeneration !== generation) return
             await finish({
               ok: false,
               message: '语音临时文件保存失败。',

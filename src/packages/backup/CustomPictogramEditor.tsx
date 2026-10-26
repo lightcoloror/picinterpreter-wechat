@@ -8,6 +8,7 @@ import {
 } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { BoardDTO } from '@cboard-communication-core/dto'
+import { currentImageOperationEpoch } from '@cboard-communication-core/imageOperationEpoch'
 
 import PictogramImage from '../../components/PictogramImage'
 import { taroPersonalImagePort } from '../../platform/taroPersonalImagePort'
@@ -47,7 +48,11 @@ interface CustomPictogramEditorProps {
     tileId: string,
     direction: 'earlier' | 'later'
   ) => boolean
-  onRemove: (boardId: string, tileId: string) => boolean
+  onRemove: (
+    boardId: string,
+    tileId: string,
+    options?: { guard?: () => boolean }
+  ) => boolean | Promise<boolean>
 }
 
 interface Draft {
@@ -140,6 +145,7 @@ export default function CustomPictogramEditor({
     emptyDraft(boards[0] ? boards[0].id : '')
   )
   const [busyAction, setBusyAction] = useState('')
+  const isPerson = draft.category === 'people'
   const [isRecordingSound, setIsRecordingSound] = useState(false)
   const [originalImage, setOriginalImage] = useState('')
   const [copyTargetBoardId, setCopyTargetBoardId] = useState('')
@@ -151,6 +157,14 @@ export default function CustomPictogramEditor({
   const draftVideoRegistryRef = useRef(createDraftVideoRegistry())
   const requestIdRef = useRef(0)
   const soundRequestIdRef = useRef(0)
+  const mountedRef = useRef(true)
+  const canEditRef = useRef(canEdit)
+  const deleteRevisionRef = useRef(0)
+  const deletePendingRef = useRef<number | null>(null)
+  if (canEditRef.current !== canEdit) {
+    canEditRef.current = canEdit
+    deleteRevisionRef.current += 1
+  }
   const customEntries = useMemo(
     () => listCustomPersonalPictograms(boards),
     [boards]
@@ -190,7 +204,12 @@ export default function CustomPictogramEditor({
   }, [boards, copyTargetBoardId])
 
   useEffect(
-    () => () => {
+    () => {
+      mountedRef.current = true
+      return () => {
+      mountedRef.current = false
+      deleteRevisionRef.current += 1
+      deletePendingRef.current = null
       requestIdRef.current += 1
       soundRequestIdRef.current += 1
       const transition = draftImageRegistryRef.current.discardAll()
@@ -209,6 +228,7 @@ export default function CustomPictogramEditor({
       for (const sound of soundTransition.discard) {
         void taroTileAudioRecordingPort.remove(sound)
       }
+      }
     },
     []
   )
@@ -217,9 +237,18 @@ export default function CustomPictogramEditor({
     setDraft(current => ({ ...current, [field]: value }))
   }
 
+  const invalidatePendingDelete = () => {
+    deleteRevisionRef.current += 1
+    if (deletePendingRef.current !== null) {
+      deletePendingRef.current = null
+      setBusyAction('')
+    }
+  }
+
   const startEditing = async (
     entry: CustomPersonalPictogramEntry
   ) => {
+    invalidatePendingDelete()
     requestIdRef.current += 1
     soundRequestIdRef.current += 1
     taroTileAudioRecordingPort.cancel()
@@ -242,6 +271,7 @@ export default function CustomPictogramEditor({
   }
 
   const cancelEditing = () => {
+    invalidatePendingDelete()
     const boardId =
       (editingEntry && editingEntry.boardId) || draft.boardId
     setEditingEntry(null)
@@ -262,6 +292,10 @@ export default function CustomPictogramEditor({
 
   const choosePhoto = async (withSuggestion: boolean) => {
     if (editingEntry) return
+    if (withSuggestion && isPerson) {
+      setNotice('人物照片只用于私有图库，请手工填写全名。')
+      return
+    }
     if (withSuggestion) {
       const consent = await Taro.showModal({
         title: '单次视觉识别授权',
@@ -304,7 +338,7 @@ export default function CustomPictogramEditor({
 
     setNotice('照片已保存在本机，正在异步生成可编辑建议…')
     const result =
-      await taroPictogramMetadataSuggestionPort.suggest(selected.image)
+      await taroPictogramMetadataSuggestionPort.suggest(selected.image, { personalPerson: isPerson })
     if (requestId !== requestIdRef.current) return
     if (result.ok && result.value) {
       const suggestion = result.value
@@ -355,6 +389,10 @@ export default function CustomPictogramEditor({
   }
 
   const removeBackground = async () => {
+    if (isPerson) {
+      setNotice('人物照片不上传去背景服务，可直接使用本地照片。')
+      return
+    }
     if (
       editingEntry ||
       draft.mediaType === 'video' ||
@@ -600,87 +638,54 @@ export default function CustomPictogramEditor({
   const removeEntry = async (
     boardId: string,
     tileId: string,
-    image: string,
-    video: string,
-    sound: string,
     label: string
   ) => {
-    const confirmation = await Taro.showModal({
-      title: `删除“${label}”？`,
-      content:
-        '将从本机 CBoard 删除这张个人图卡并尝试清理图片、短视频和录音文件；不会影响其他默认图卡。',
-      confirmText: '确认删除',
-      confirmColor: '#a33a2b'
-    })
-    if (!confirmation.confirm) return
-
-    const imageIsShared =
-      isCustomPictogramMediaReferencedElsewhere(
-        boards,
-        boardId,
-        tileId,
-        'image',
-        image
-      )
-    const soundIsShared =
-      isCustomPictogramMediaReferencedElsewhere(
-        boards,
-        boardId,
-        tileId,
-        'sound',
-        sound
-      )
-    const videoIsShared =
-      isCustomPictogramMediaReferencedElsewhere(
-        boards,
-        boardId,
-        tileId,
-        'video',
-        video
-      )
+    if (!canEditRef.current || controlsBusy || deletePendingRef.current !== null) return
+    const revision = ++deleteRevisionRef.current
+    const epoch = currentImageOperationEpoch()
+    deletePendingRef.current = revision
+    const guard = () => mountedRef.current && canEditRef.current &&
+      currentImageOperationEpoch() === epoch &&
+      deleteRevisionRef.current === revision && deletePendingRef.current === revision
     setBusyAction(tileId)
-    const removed = onRemove(boardId, tileId)
-    if (!removed) {
-      setNotice('个人图卡删除失败，请稍后重试。')
-      setBusyAction('')
-      return
+    try {
+      const confirmation = await Taro.showModal({
+        title: `删除“${label}”？`,
+        content: '将从图库移除这张个人图卡；已有收藏、历史和草稿使用的媒体会保留，可在本次使用中撤销删除。',
+        confirmText: '确认删除',
+        confirmColor: '#a33a2b'
+      })
+      if (!confirmation.confirm || !guard()) return
+      const removed = await onRemove(boardId, tileId, { guard })
+      if (!guard()) return
+      if (removed !== true) {
+        setNotice('个人图卡删除未确认，编辑内容仍保留，请重试。')
+        return
+      }
+      if (editingEntry && editingEntry.boardId === boardId && editingEntry.tile.id === tileId) {
+        soundRequestIdRef.current += 1
+        taroTileAudioRecordingPort.cancel()
+        wechatTileAudioPort.stop()
+        setIsRecordingSound(false)
+        // These registries own only uncommitted replacement media. The saved
+        // tile's media must survive for undo and existing expression snapshots.
+        const soundTransition = draftSoundRegistryRef.current.discardAll()
+        void removeLocalSounds(soundTransition.discard)
+        const videoTransition = draftVideoRegistryRef.current.discardAll()
+        void removeLocalVideos(videoTransition.discard)
+        setEditingEntry(null)
+        setDraft(emptyDraft((boards[0] && boards[0].id) || ''))
+        setOriginalImage('')
+      }
+      setNotice(`“${label}”已从图库删除；媒体已保留，可撤销删除，已有收藏、历史和草稿不受影响。`)
+    } catch (error) {
+      if (guard()) setNotice('个人图卡删除未确认，编辑内容仍保留，请重试。')
+    } finally {
+      if (deletePendingRef.current === revision) {
+        deletePendingRef.current = null
+        if (mountedRef.current) setBusyAction('')
+      }
     }
-    if (
-      editingEntry &&
-      editingEntry.boardId === boardId &&
-      editingEntry.tile.id === tileId
-    ) {
-      soundRequestIdRef.current += 1
-      taroTileAudioRecordingPort.cancel()
-      wechatTileAudioPort.stop()
-      setIsRecordingSound(false)
-      const soundTransition =
-        draftSoundRegistryRef.current.discardAll()
-      await removeLocalSounds(soundTransition.discard)
-      const videoTransition =
-        draftVideoRegistryRef.current.discardAll()
-      await removeLocalVideos(videoTransition.discard)
-      setEditingEntry(null)
-      setDraft(emptyDraft((boards[0] && boards[0].id) || ''))
-      setOriginalImage('')
-    }
-    const imageRemoved = imageIsShared
-      ? true
-      : await taroPersonalImagePort.remove(image)
-    const soundRemoved = !sound || soundIsShared
-      ? true
-      : await taroTileAudioRecordingPort.remove(sound)
-    const videoRemoved = !video || videoIsShared
-      ? true
-      : await taroPersonalVideoPort.remove(video)
-    setNotice(
-      imageRemoved && soundRemoved && videoRemoved
-        ? imageIsShared || soundIsShared || videoIsShared
-          ? `“${label}”已从当前板删除；共享媒体仍供其他板使用。`
-          : `“${label}”及其本机图片、短视频和录音已删除。`
-        : `“${label}”已从图板删除；部分旧媒体清理失败，但不会再用于沟通。`
-    )
-    setBusyAction('')
   }
 
   return (
@@ -709,6 +714,16 @@ export default function CustomPictogramEditor({
           : '新图卡只保存在当前微信设备；只有明确同意时才会单次上传以生成建议。')}
       </Text>
 
+      {canEdit && (
+        <View>
+          <Button disabled={controlsBusy || Boolean(draft.image) || Boolean(editingEntry)}
+            onClick={() => updateField('category', isPerson ? '' : 'people')}
+          >
+            {isPerson ? '人物卡（全名＋本人照片）' : '切换为人物卡'}
+          </Button>
+          {isPerson && <Text>请使用全名，不填昵称或亲属称呼。照片不会发送给视觉模型或公共补图。</Text>}
+        </View>
+      )}
       {canEdit && !editingEntry && (
         <View className='custom-pictogram-editor__photo-actions'>
         <Button
@@ -720,7 +735,7 @@ export default function CustomPictogramEditor({
         </Button>
         <Button
           className='custom-pictogram-button'
-          disabled={controlsBusy}
+          disabled={controlsBusy || isPerson}
           onClick={() => choosePhoto(true)}
         >
           选图并生成建议
@@ -760,7 +775,7 @@ export default function CustomPictogramEditor({
               <View className='custom-pictogram-editor__background-removal'>
                 <Button
                   className='custom-pictogram-button custom-pictogram-button--background'
-                  disabled={controlsBusy || Boolean(originalImage)}
+                  disabled={controlsBusy || Boolean(originalImage) || isPerson}
                   onClick={removeBackground}
                 >
                   {busyAction === 'background'
@@ -790,7 +805,7 @@ export default function CustomPictogramEditor({
             <Input
               className='custom-pictogram-input'
               maxlength={40}
-              placeholder='图卡名称（必填）'
+              placeholder={isPerson ? '全名（必填）' : '图卡名称（必填）'}
               value={draft.label}
               disabled={controlsBusy}
               onInput={event =>
@@ -850,9 +865,9 @@ export default function CustomPictogramEditor({
             <Input
               className='custom-pictogram-input'
               maxlength={160}
-              placeholder='同义词，用逗号分隔'
+              placeholder={isPerson ? '人物仅按全名匹配，不使用昵称' : '同义词，用逗号分隔'}
               value={draft.synonyms}
-              disabled={controlsBusy}
+              disabled={controlsBusy || isPerson}
               onInput={event =>
                 updateField('synonyms', event.detail.value)
               }
@@ -862,7 +877,7 @@ export default function CustomPictogramEditor({
               maxlength={40}
               placeholder='语义分类，例如：饮食、家人'
               value={draft.category}
-              disabled={controlsBusy}
+              disabled={controlsBusy || isPerson}
               onInput={event =>
                 updateField('category', event.detail.value)
               }
@@ -919,7 +934,7 @@ export default function CustomPictogramEditor({
             {editingEntry && (
               <Button
                 className='custom-pictogram-button'
-                disabled={controlsBusy}
+                disabled={controlsBusy && deletePendingRef.current === null}
                 onClick={cancelEditing}
               >
                 取消修改
@@ -1043,9 +1058,6 @@ export default function CustomPictogramEditor({
                       removeEntry(
                         entry.boardId,
                         entry.tile.id,
-                        entry.tile.image,
-                        entry.tile.video || '',
-                        entry.tile.sound || '',
                         entry.tile.label
                       )
                     }

@@ -27,12 +27,18 @@ export const runtime = {
   resolveBuiltinImage: careBuiltinImages.resolve,
   enabled: process.env.TARO_APP_CARE_COLLABORATION === 'true',
   trialEnabled: process.env.TARO_APP_CARE_PUBLIC_TRIAL === 'true',
-  fundingEnabled: Boolean(apiBaseUrlFor('aiFeatures')),
+  fundingEnabled: Boolean(apiBaseUrlFor('textAiFeatures')),
   identity,
   openAccount: () => Taro.redirectTo({ url: '/packages/management/pages/index/index' }),
   randomBytes: async (length: number) => new Uint8Array((await Taro.getRandomValues({ length })).randomValues),
   funding(profileId: string) { const who = identity(); return who ? Taro.getStorageSync(`care-funding-v1:${who.id}:${profileId}`) : null },
-  setFunding(profileId: string, fundingId: string) { const who = identity(); if (who) Taro.setStorageSync(`care-funding-v1:${who.id}:${profileId}`, fundingId) },
+  setFunding(profileId: string, fundingId: string) {
+    const who = identity()
+    if (who) {
+      Taro.setStorageSync(`care-funding-v1:${who.id}:${profileId}`, fundingId)
+      Taro.eventCenter.trigger('care-ai-context-changed')
+    }
+  },
   async selectProfile(profile: CareSelection) {
     const who = identity()
     const accountId = who?.id

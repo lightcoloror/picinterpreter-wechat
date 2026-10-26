@@ -49,6 +49,10 @@ function createRuntimeCapabilities(environment) {
     releaseChannel, apiBaseUrl, hasPublicHttpsApi,
     cloudFeatures: apiReady && enabled(environment.enableCloudFeatures),
     aiFeatures: apiReady && enabled(environment.enableAiFeatures),
+    textAiFeatures: apiReady && enabled(
+      String(environment.enableTextAiFeatures || '').trim()
+        ? environment.enableTextAiFeatures : environment.enableAiFeatures
+    ),
     ocr: apiReady && enabled(environment.enableOcr),
     onlinePictograms: enabled(environment.enableOnlinePictograms),
     dialectAsr: apiReady && enabled(environment.enableDialectAsr)

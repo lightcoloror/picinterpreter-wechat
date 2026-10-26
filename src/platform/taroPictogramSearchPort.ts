@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro'
+import { verifyTaroLocalImage } from './taroLocalImageVerification'
 
 import { apiBaseUrlFor, runtimeCapabilities } from '../config/runtimeCapabilities'
 
@@ -20,6 +21,7 @@ const saveFile = async (options: Parameters<typeof Taro.saveFile>[0]) => {
 }
 
 const cboardApiPictogramSearchPort = createPictogramSearchPort({
+  verifyImage: verifyTaroLocalImage,
   apiBaseUrl,
   request: options => Taro.request(options),
   downloadFile,
@@ -27,6 +29,7 @@ const cboardApiPictogramSearchPort = createPictogramSearchPort({
 })
 
 const arasaacDirectPictogramSearchPort = createArasaacPictogramSearchPort({
+  verifyImage: verifyTaroLocalImage,
   request,
   downloadFile,
   saveFile

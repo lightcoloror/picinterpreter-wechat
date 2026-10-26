@@ -8,6 +8,7 @@ import {
 } from '../../fixtures/defaultBoard'
 import {
   createExpressionSession,
+  createExpressionSessionFromDraft,
   createExpressionSessionFromSavedPhrase,
   createExpressionSessionFromTileReferences,
   expressionSessionReducer,
@@ -186,7 +187,7 @@ describe('WeChat expression session', () => {
   })
 
 
-  test('reuses a common phrase with current board tiles and its saved sentence', () => {
+  test('reuses saved snapshots without replacing them from the current board', () => {
     const drinkBoard: BoardDTO = {
       ...DEFAULT_BOARD_FIXTURE,
       id: 'drinks-board',
@@ -205,7 +206,7 @@ describe('WeChat expression session', () => {
     })
 
     expect(next.selectedTiles[0]).toEqual(
-      expect.objectContaining({ id: WATER_TILE.id, boardId: 'drinks-board' })
+      WATER_TILE
     )
     expect(next.pipeline.candidateSentences[0]).toBe('请给我一点水。')
   })
@@ -225,4 +226,62 @@ describe('WeChat expression session', () => {
       WATER_TILE.id
     ])
   })
+})
+
+test('preserves repeated identities and more than twelve saved tiles; supports text-only', () => {
+  const output = Array.from({ length: 15 }, (_, i) => ({ ...WATER_TILE, id: 'same-id',
+    label: '合成林安', personId: `synthetic-person-${i}`, image: `private:synthetic-${i}` }))
+  const phrase = { id: 'synthetic-identity', sentence: '合成林安今晚七点半回家吃饭。', output }
+  const loaded = createExpressionSessionFromSavedPhrase(DEFAULT_BOARD_FIXTURES, phrase)
+  expect(loaded.selectedTiles).toEqual(output)
+  expect(loaded.selectedTiles).not.toBe(output)
+  expect(loaded.pipeline.candidateSentences[0]).toBe(phrase.sentence)
+  const text = createExpressionSessionFromSavedPhrase([], { id: 'text', sentence: '我今晚不回家吃饭', output: [] })
+  expect(text.selectedTiles).toEqual([])
+  expect(text.pipeline.candidateSentences[0]).toBe('我今晚不回家吃饭')
+})
+
+test('unfinished expression restores exact ordered identities and candidates without persisted undo', () => {
+  const output = [
+    { ...WATER_TILE, id: 'same-id', label: '合成林安', personId: 'synthetic-a', image: 'private:a' },
+    { ...WATER_TILE, id: 'same-id', label: '合成林安', personId: 'synthetic-b', image: 'private:b' },
+    { ...WATER_TILE, id: 'same-id', label: '合成林安', personId: 'synthetic-a', image: 'private:a' }
+  ]
+  const pipeline = createExpressionSessionFromSavedPhrase([], {
+    sentence: '合成林安今晚七点半不回家吃饭。', output
+  }).pipeline
+  pipeline.candidateSentences = ['合成林安今晚七点半不回家吃饭。', '请给合成林安两杯水。']
+  pipeline.selectedIndex = 1
+  const restored = createExpressionSessionFromDraft({
+    pipeline, rejected: true, candidateFeedbackEntries: []
+  })
+  expect(restored.selectedTiles).toEqual(output)
+  expect(restored.selectedTiles).not.toBe(output)
+  expect(restored.pipeline.candidateSentences).toEqual(pipeline.candidateSentences)
+  expect(restored.pipeline.selectedIndex).toBe(1)
+  expect(restored.restored).toBe(true)
+  expect(restored.undoHistory).toBeUndefined()
+  output[0].image = 'private:changed-library'
+  expect(restored.selectedTiles[0].image).toBe('private:a')
+})
+
+test('text-only unfinished expression can clear, undo in memory and restore as text-only', () => {
+  const text = createExpressionSessionFromSavedPhrase([], {
+    sentence: '我今晚不回家吃饭', output: []
+  })
+  const restored = createExpressionSessionFromDraft({
+    pipeline: text.pipeline, rejected: false, candidateFeedbackEntries: []
+  })
+  expect(restored.selectedTiles).toEqual([])
+  const cleared = expressionSessionReducer(restored, { type: 'clear' })
+  expect(cleared.pipeline.candidateSentences).toEqual([])
+  const undone = expressionSessionReducer(cleared, { type: 'undo-delete' })
+  expect(undone.pipeline.candidateSentences).toEqual(['我今晚不回家吃饭'])
+})
+
+test('broken snapshots fail closed without matching against library IDs', () => {
+  expect(() => createExpressionSessionFromDraft({
+    pipeline: { ...createExpressionSession().pipeline, outputSnapshot: [null] },
+    rejected: false, candidateFeedbackEntries: []
+  } as never)).toThrow()
 })

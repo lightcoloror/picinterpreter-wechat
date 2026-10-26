@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { buildWorkspaceCorrectionMemory } from '@cboard-communication-core/correctionMemory'
 import { RECEIVER_PATIENT_FEEDBACK } from '@cboard-communication-core/receiverPatientFeedback'
+import { receiverDraftContentSignature } from '@cboard-communication-core/receiverDraftPersistence'
 
 import { DEFAULT_BOARD_FIXTURES } from '../../fixtures/defaultBoard'
 import {
@@ -27,10 +28,17 @@ function createReviewIdFactory() {
 }
 
 describe('WeChat receiver session', () => {
+  test('restored retained text and action snapshots still describe the saved draft', () => {
+    let state = runReceiverSession('我今晚不回家吃饭，明早七点半出门。', DEFAULT_BOARD_FIXTURES)
+    state.reviewItems.filter(item => !item.tile).forEach(item => { state = retainReceiverItemAsText(state, item.id) })
+    const entry = { ...buildConfirmedReceiverHistory(state)!, id: 'synthetic-receiver', recordStatus: 'draft' as const }
+    const restored = restoreReceiverWorkspaceFromRecord(entry, DEFAULT_BOARD_FIXTURES)!
+    expect(JSON.parse(receiverDraftContentSignature(buildConfirmedReceiverHistory(restored.session)))).toEqual(JSON.parse(receiverDraftContentSignature(entry)))
+  })
   test.each([
     ['你是想喝水吗？', ['你', '是', '想', '喝', '水', '吗', '？']],
     ['今天吃了三次药', ['今天', '吃', '了', '三', '次', '药']],
-    ['后天早上八点再来', ['后天', '早上', '八', '点', '再', '来']],
+    ['后天早上八点再来', ['后天', '早上', '八点', '再', '来']],
     ['我想换一个枕头', ['我', '想', '换', '一', '个', '枕头']],
     ['二十三次', ['二十三', '次']],
     ['一个人', ['一个人']],

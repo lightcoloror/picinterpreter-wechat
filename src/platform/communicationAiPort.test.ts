@@ -1,7 +1,18 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import { buildCommunicationAiSentenceRequest, normalizeResegmentResponse } from '@cboard-communication-core/communicationAi'
+import { buildPersonalPictogramTileDTO } from '@cboard-communication-core/pictogramMetadataSuggestion'
 import { createCommunicationAiPort } from './communicationAiPort'
+
+test('explains semantic rejection without suggesting that the network is unavailable', async () => {
+  const request = vi.fn(async () => ({ statusCode: 502, data: { error: { code: 'AI_SENTENCE_MEANING_MISMATCH' } } }))
+  const port = createCommunicationAiPort({ apiBaseUrl: 'https://synthetic.invalid/api', getAuthToken: () => 'synthetic-token', request })
+  const result = await port.generateSentences({ pictogramLabels: ['我', '痛'] })
+  expect(result.ok).toBe(false)
+  expect(result.message).toContain('原意')
+  expect(result.message).toContain('不会自动再次生成')
+  expect(request).toHaveBeenCalledTimes(1)
+})
 
 function createHarness(options: { apiBaseUrl?: string; token?: string } = {}) {
   const request = vi.fn(async ({ url }: { url: string }) => {
@@ -115,6 +126,21 @@ function createHarness(options: { apiBaseUrl?: string; token?: string } = {}) {
 }
 
 describe('communicationAiPort', () => {
+  test('keeps repeated same-name people distinct at the request boundary and fails closed on lost mapping', async () => {
+    const output = ['a', 'b', 'a'].map(id => buildPersonalPictogramTileDTO({ id, boardId: 'synthetic', category: 'people', label: '林知岚', image: `synthetic-private://${id}` }))
+    const request = vi.fn(async () => ({ statusCode: 200, data: { candidates: ['⟦P1⟧叫⟦P2⟧找⟦P1⟧。'] } }))
+    const port = createCommunicationAiPort({ apiBaseUrl: 'https://synthetic.invalid/api', getAuthToken: () => 'synthetic', request })
+    const built = buildCommunicationAiSentenceRequest({ output })
+    const result = await port.generateSentences(built)
+    expect(result.ok && result.value.candidates).toEqual(['林知岚叫林知岚找林知岚。'])
+    const options = request.mock.calls[0][0] as any
+    expect(options.data.pictogramLabels).toEqual(['⟦P1⟧', '⟦P2⟧', '⟦P1⟧'])
+    expect(options.localIdentity).toMatch(/^[a-f0-9]{64}$/)
+    expect(JSON.stringify(options.data)).not.toMatch(/林知岚|synthetic-private|personId|entries/)
+    request.mockClear()
+    expect(await port.generateSentences(JSON.parse(JSON.stringify(built)))).toMatchObject({ ok: false, code: 'AI_PERSON_REFERENCE_MISMATCH' })
+    expect(request).not.toHaveBeenCalled()
+  })
   test('keeps stored conversation out of the expression request passed to the transport', async () => {
     const harness = createHarness()
     const built = buildCommunicationAiSentenceRequest({

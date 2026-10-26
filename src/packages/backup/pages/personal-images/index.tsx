@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Text, View } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
+import Taro, { useDidHide, useDidShow } from '@tarojs/taro'
 import type { PictogramAttribution } from '@cboard-communication-core/pictogramAttribution'
 import type { PersonalImagePreference } from '@cboard-communication-core/personalImagePreferences'
 import type { TileDTO } from '@cboard-communication-core/dto'
 import {
   CURATED_PUBLIC_PICTOGRAM_ID_PREFIX,
   createCuratedPublicPictogram,
-  removeCuratedPublicPictogram
+  listCuratedPublicPictograms
 } from '@cboard-communication-core/publicPictogramCuration'
 
 import PersonalImageManager from '../../../../features/communication/PersonalImageManager'
@@ -15,14 +15,15 @@ import { runtimeCapabilities } from '../../../../config/runtimeCapabilities'
 import { createTaroCommunicationRepository } from '../../../../platform/taroCommunicationRepository'
 import { canEditCareLibrary, canEditCarePreferences, careScopedKey, currentCareContext } from '../../../../platform/taroCareContext'
 import { taroPictureLibraryStore } from '../../../../platform/taroPictureLibraryStore'
+import { currentGalleryUndoScope, taroGalleryTileUndo } from '../../../../platform/taroGalleryTileUndo'
 import { rebasePersonalImageLibraryBoards } from '../../personalImageLibrary'
 import CustomPictogramEditor from '../../CustomPictogramEditor'
 import PublicBoardPublisher from '../../PublicBoardPublisher'
 import {
   copyCustomPersonalPictogram,
   createCustomPersonalPictogram,
+  listCustomPersonalPictograms,
   moveCustomPersonalPictogram,
-  removeCustomPersonalPictogram,
   type CustomPersonalPictogramInput,
   updateCustomPersonalPictogram
 } from '../../customPersonalPictogram'
@@ -44,6 +45,12 @@ function createCuratedPictogramId() {
 }
 
 export default function PersonalImageLibraryPage() {
+  const activeRef = useRef(true)
+  const pageRevisionRef = useRef(0)
+  const pendingRef = useRef(false)
+  const [galleryBusy, setGalleryBusy] = useState(false)
+  const [galleryNotice, setGalleryNotice] = useState('')
+  const [undoState, setUndoState] = useState(() => taroGalleryTileUndo.state())
   const [libraryBoards, setLibraryBoards] = useState(
     loadLibraryBoards
   )
@@ -60,21 +67,10 @@ export default function PersonalImageLibraryPage() {
     currentCareContext()?.selection?.locked ||
     Taro.getStorageSync(careScopedKey('care-locked'))
   ))
-  const renderedContext = currentCareContext()
-  const renderScopeParts = [
-    renderedContext?.accountId || '',
-    renderedContext?.familyId || '',
-    renderedContext?.profileId || ''
-  ]
-  const renderedScope = JSON.stringify(renderScopeParts)
+  const renderedScope = currentGalleryUndoScope()
   const [loadedScope, setLoadedScope] = useState(renderedScope)
   const scopeStillCurrent = () => {
-    const context = currentCareContext()
-    return renderedScope === JSON.stringify([
-      context?.accountId || '',
-      context?.familyId || '',
-      context?.profileId || ''
-    ])
+    return renderedScope === currentGalleryUndoScope()
   }
 
   const refreshPermission = () => {
@@ -89,11 +85,7 @@ export default function PersonalImageLibraryPage() {
   const reload = () => {
     refreshPermission()
     const context = currentCareContext()
-    const nextScope = JSON.stringify([
-      context?.accountId || '',
-      context?.familyId || '',
-      context?.profileId || ''
-    ])
+    const nextScope = currentGalleryUndoScope()
     setLoadedScope(nextScope)
     if (context?.selection?.locked || Taro.getStorageSync(careScopedKey('care-locked'))) {
       setLibraryBoards([])
@@ -104,7 +96,18 @@ export default function PersonalImageLibraryPage() {
     setPreferences(repository.loadPersonalImagePreferences())
   }
 
-  useDidShow(reload)
+  useDidShow(() => { activeRef.current = true; reload() })
+  useDidHide(() => { activeRef.current = false; pageRevisionRef.current += 1 })
+  useEffect(() => {
+    pageRevisionRef.current += 1
+    setUndoState(taroGalleryTileUndo.state())
+    setGalleryNotice('')
+  }, [renderedScope])
+  useEffect(() => {
+    activeRef.current = true
+    const unsubscribe = taroGalleryTileUndo.subscribe(setUndoState)
+    return () => { activeRef.current = false; pageRevisionRef.current += 1; unsubscribe() }
+  }, [])
   useEffect(() => {
     const changed = () => {
       setLibraryBoards([])
@@ -176,24 +179,67 @@ export default function PersonalImageLibraryPage() {
     }
   }
 
-  const removeCustomPictogram = (
+  const removeCustomPictogram = async (
     boardId: string,
-    tileId: string
+    tileId: string,
+    options: { guard?: () => boolean } = {}
   ) => {
-    if (!scopeStillCurrent() || !canEditCareLibrary()) return false
+    const pageRevision = pageRevisionRef.current
+    const guard = () => activeRef.current && pageRevision === pageRevisionRef.current && scopeStillCurrent() &&
+      canEditCareLibrary() && (!options.guard || options.guard())
+    if (pendingRef.current || !guard()) return false
+    const current = loadLibraryBoards()
+    const removable = [...listCustomPersonalPictograms(current), ...listCuratedPublicPictograms(current)]
+      .some(entry => entry.boardId === boardId && entry.tile.id === tileId)
+    // A retry can legitimately find the tile already absent after a previous
+    // write whose confirmation was interrupted. The service owns that receipt.
+    if (!removable && current.some(board => board.id === boardId && board.tiles.some(tile => tile.id === tileId))) return false
+    pendingRef.current = true
+    setGalleryBusy(true)
+    setGalleryNotice('正在确认删除…')
     try {
-      const current = taroPictureLibraryStore.load()
-      const removed = removeCustomPersonalPictogram(
-        current,
-        boardId,
-        tileId
-      )
-      if (!removed) return false
-      const saved = taroPictureLibraryStore.save(removed.boards)
-      setLibraryBoards(saved)
+      const result = await taroGalleryTileUndo.delete(boardId, tileId, { guard })
+      if (!guard()) return false
+      if (!result.board) {
+        setGalleryNotice('删除尚未确认，请重试；图片和已有表达记录保持保留。')
+        return false
+      }
+      setLibraryBoards(loadLibraryBoards())
+      setUndoState(taroGalleryTileUndo.state())
+      setGalleryNotice(`已删除「${result.label || '图卡'}」，可撤销。`)
       return true
     } catch (error) {
+      if (guard()) setGalleryNotice('删除尚未确认，请重试；图片和已有表达记录保持保留。')
       return false
+    } finally {
+      pendingRef.current = false
+      if (activeRef.current) setGalleryBusy(false)
+    }
+  }
+
+  const undoGalleryDelete = async () => {
+    const operationId = undoState.operationId
+    const pageRevision = pageRevisionRef.current
+    const guard = () => activeRef.current && pageRevision === pageRevisionRef.current && scopeStillCurrent() && canEditCareLibrary()
+    if (!operationId || pendingRef.current || !guard()) return
+    pendingRef.current = true
+    setGalleryBusy(true)
+    setGalleryNotice('正在恢复图卡…')
+    try {
+      const result = await taroGalleryTileUndo.undo(operationId, { guard })
+      if (!guard()) return
+      if (!result.board) {
+        setGalleryNotice('恢复尚未确认，撤销记录仍保留；请重试。')
+        return
+      }
+      setLibraryBoards(loadLibraryBoards())
+      setUndoState(taroGalleryTileUndo.state())
+      setGalleryNotice('已恢复图卡，原图片和人物身份保持不变。')
+    } catch (error) {
+      if (guard()) setGalleryNotice('恢复尚未确认，撤销记录仍保留；请重试。')
+    } finally {
+      pendingRef.current = false
+      if (activeRef.current) setGalleryBusy(false)
     }
   }
 
@@ -288,27 +334,7 @@ export default function PersonalImageLibraryPage() {
     }
   }
 
-  const removeCuratedPictogram = (
-    boardId: string,
-    tileId: string
-  ) => {
-    if (!scopeStillCurrent() || !canEditCareLibrary()) return false
-    try {
-      const current = taroPictureLibraryStore.load()
-      const removed = removeCuratedPublicPictogram(
-        current,
-        boardId,
-        tileId
-      )
-      if (!removed) return false
-      setLibraryBoards(
-        taroPictureLibraryStore.save(removed.boards)
-      )
-      return true
-    } catch (error) {
-      return false
-    }
-  }
+  const removeCuratedPictogram = removeCustomPictogram
 
   const returnToCommunication = () => {
     void Taro.navigateBack({ delta: 1 }).catch(() =>
@@ -346,6 +372,18 @@ export default function PersonalImageLibraryPage() {
           返回上一页
         </Button>
       </View>
+
+      {!locked && canEditLibrary && scopeIsLoaded && (galleryNotice || undoState.count > 0) && (
+        <View className='gallery-delete-undo' id='gallery-delete-undo'>
+          <Text id='gallery-delete-undo-status'>{galleryNotice || `可撤销最近删除的「${undoState.label || '图卡'}」。`}</Text>
+          {undoState.operationId && <Button
+            id='gallery-delete-undo-button'
+            disabled={galleryBusy}
+            onClick={() => void undoGalleryDelete()}
+          >{galleryBusy ? '正在确认…' : `撤销删除（${undoState.count}）`}</Button>}
+          <Text className='gallery-delete-undo__hint'>本次会话保留最近 20 次删除，图片及已有表达记录保持保留。</Text>
+        </View>
+      )}
 
       {locked ? (
         <Text className='personal-image-manager__privacy'>当前家庭档案已锁定，图片资料暂不可查看；解锁后重新进入此页。</Text>

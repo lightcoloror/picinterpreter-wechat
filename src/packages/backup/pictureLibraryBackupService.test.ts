@@ -242,6 +242,7 @@ function createHarness() {
     createRestoreSession: vi.fn().mockResolvedValue(restoreSession),
   };
   const repository = {
+    clearExpressionDrafts: vi.fn(),
     loadCommunicationIdentity: () => ({
       patientId: "patient-current",
       workspaceId: "workspace-current",
@@ -1282,6 +1283,7 @@ describe("picture library backup service", () => {
     const result = await harness.service.clearPrivatePictograms();
 
     expect(result.ok).toBe(true);
+    expect(harness.repository.clearExpressionDrafts).toHaveBeenCalledOnce();
     expect(
       harness.localDeviceDataPort.removePrivateFile.mock.calls
         .map((call) => call[0])
@@ -1329,5 +1331,17 @@ describe("picture library backup service", () => {
     expect(
       harness.repository.overwriteAllPersonalImagePreferences,
     ).not.toHaveBeenCalled();
+  });
+
+  test("stops privacy cleanup before image deletion when expression drafts cannot be cleared", async () => {
+    const harness = createHarness();
+    harness.repository.clearExpressionDrafts.mockImplementation(() => {
+      throw new Error("synthetic draft storage failure");
+    });
+    expect(await harness.service.clearPrivatePictograms()).toEqual(
+      expect.objectContaining({ ok: false, message: expect.stringContaining("表达草稿") }),
+    );
+    expect(harness.localDeviceDataPort.removePrivateFile).not.toHaveBeenCalled();
+    expect(harness.repository.overwriteAllPersonalImagePreferences).not.toHaveBeenCalled();
   });
 });

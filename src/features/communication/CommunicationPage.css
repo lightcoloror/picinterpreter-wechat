@@ -45,6 +45,12 @@ page {
   font-weight: 900;
 }
 
+.patient-action-button__icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
 .patient-action-button__label {
   font-size: 20px;
   font-weight: 900;
@@ -485,6 +491,8 @@ page {
 .expression-chip {
   display: inline-flex;
   width: 312px;
+  min-width: 0;
+  flex: 0 0 auto;
   padding: 10px 12px;
   align-items: center;
   flex-direction: column;
@@ -494,6 +502,49 @@ page {
   color: #16302b;
   font-size: 21px;
   font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* The sequence scrolls horizontally; each card's repair UI wraps locally. */
+.image-repair-controls {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.image-repair-controls__status,
+.image-repair-controls__notice,
+.image-repair-controls__actions > text,
+.image-repair-controls__candidate > text {
+  display: block;
+  max-width: 100%;
+  line-height: 1.5;
+}
+
+.image-repair-controls__actions,
+.image-repair-controls__candidate {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.image-repair-controls button {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  min-height: 64px;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 22px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .expression-chip__image {
@@ -507,6 +558,10 @@ page {
   display: flex;
   gap: 14px;
   margin-top: 18px;
+}
+
+.sequence-actions {
+  flex-wrap: wrap;
 }
 
 .pictogram-suggestions {
@@ -2858,10 +2913,16 @@ page {
 }
 
 .phrase-playback-overlay__missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
   color: #9a3412;
-  font-size: 74px;
-  font-weight: 900;
-  line-height: 138px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-all;
 }
 
 .phrase-playback-overlay__label {
@@ -2965,12 +3026,58 @@ page {
   }
 
   .phrase-playback-overlay__missing {
-    font-size: 58px;
-    line-height: 106px;
+    font-size: 18px;
+    padding: 8px;
   }
 
   .phrase-playback-overlay__sentence {
     font-size: 38px;
   }
+}
+
+.receiver-reading,
+.receiver-repair {
+  margin: 20rpx 0;
+  padding: 24rpx;
+  border: 2rpx solid currentColor;
+  border-radius: 16rpx;
+  overflow-wrap: anywhere;
+}
+
+.receiver-reading text,
+.receiver-repair text {
+  display: block;
+  line-height: 1.6;
+}
+
+.receiver-reading__original {
+  font-size: 1.3em;
+  white-space: pre-wrap;
+}
+
+.receiver-repair .action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.receiver-repair button,
+.receiver-reading button {
+  min-height: 88rpx;
+}
+
+.expression-draft-recovery,
+.expression-draft-save-state {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+  overflow-wrap: anywhere;
+}
+
+.expression-draft-recovery button,
+.expression-draft-save-state button {
+  min-height: 88rpx;
+  font-size: inherit;
 }
 

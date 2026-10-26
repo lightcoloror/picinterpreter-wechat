@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { getSemanticCandidateHint } from '@cboard-communication-core/pictogramSemantics'
 import { Button, Input, Text, View } from '@tarojs/components'
 import type { BoardDTO } from '@cboard-communication-core/dto'
 import {
@@ -19,10 +20,13 @@ import {
 } from '@cboard-communication-core/symbolMatching'
 
 import type { RuntimePictogram } from '../../platform/pictogramSearchPort'
+import { resolveTrustedImageUrl } from '../../platform/pictogramSearchPort'
+import { apiBaseUrlFor, runtimeCapabilities } from '../../config/runtimeCapabilities'
 import { taroCommunicationAiPort } from '../../platform/taroCommunicationAiPort'
 import { saveBase64PngToUserData } from '../../platform/taroBase64ImageFile'
 import { taroPersonalImagePort } from '../../platform/taroPersonalImagePort'
 import PictogramImage from '../../components/PictogramImage'
+import ImageAvailabilityLabel from '../../components/ImageAvailabilityLabel'
 
 export interface MissingTokenReview {
   status: 'new' | 'suggested' | 'ignored' | 'resolved'
@@ -90,15 +94,6 @@ function isDevicePrivateResolution(record: MissingTokenRecord) {
   )
 }
 
-function getManagedResolutionImage(record: MissingTokenRecord) {
-  const resolvedPictogram = record.resolvedPictogram
-  if (!resolvedPictogram) return ''
-
-  const isOnlineResolution = String(record.source || '').startsWith('online:')
-  return isDevicePrivateResolution(record) || isOnlineResolution
-    ? resolvedPictogram.image
-    : ''
-}
 
 export default function MissingTokenQueue({
   boards,
@@ -241,7 +236,8 @@ export default function MissingTokenQueue({
         })
       )
       if (!saved) {
-        await taroPersonalImagePort.remove(selected.image)
+        // A failed receipt can follow a successful write. Do not delete bytes
+        // that a saved snapshot may already reference.
         setNotice('图片已选择，但本机词图关联保存失败，请稍后重试。')
         return
       }
@@ -257,26 +253,8 @@ export default function MissingTokenQueue({
   }
 
   const restorePendingRecord = async (record: MissingTokenRecord) => {
-    const privateResolution = isDevicePrivateResolution(record)
-    const managedImage = getManagedResolutionImage(record)
     const saved = applyReview(record.id, { status: 'new' })
-    if (!saved || !managedImage) return
-
-    const removed = await taroPersonalImagePort.remove(managedImage)
-    if (privateResolution) {
-      setNotice(
-        removed
-          ? '本机私图关联和图片文件已移除，可重新选择处理方式。'
-          : '本机私图关联已移除；旧图片文件清理失败，但不会再用于沟通。'
-      )
-      return
-    }
-
-    setNotice(
-      removed
-        ? '在线图片缓存和关联已移除，可重新选择处理方式。'
-        : '在线图片关联已移除；旧缓存文件清理失败，但不会再用于沟通。'
-    )
+    if (saved) setNotice('已恢复待处理；原图片文件保留，已有收藏和历史不受影响。')
   }
 
   const searchOnline = async (recordIds: string[]) => {
@@ -463,7 +441,8 @@ export default function MissingTokenQueue({
                   <View className='missing-queue__token-row'>
                     <Text className='missing-queue__token'>{record.normalizedToken}</Text>
                     <Text className={`missing-queue__status missing-queue__status--${record.status}`}>
-                      {STATUS_LABELS[record.status]}
+                      {record.status === 'suggested' && !onlineSuggestions.length
+                        ? STATUS_LABELS.new : STATUS_LABELS[record.status]}
                     </Text>
                   </View>
                   <Text className='missing-queue__meta'>出现次数：{record.occurrenceCount}</Text>
@@ -475,6 +454,15 @@ export default function MissingTokenQueue({
                       已关联：{resolvedCandidate ? getCandidateLabel(resolvedCandidate) : (onlineResolution ? onlineResolution.label : '')}
                     </Text>
                   )}
+                  {record.status === 'resolved' &&
+                    onlineResolution && (
+                      <View>
+                        <PictogramImage className='missing-queue__online-image' src={onlineResolution.image} label={onlineResolution.label} />
+                        <Text className='missing-queue__meta'>
+                        <ImageAvailabilityLabel source={onlineResolution.image} />
+                          </Text>
+                      </View>
+                    )}
                   {record.status === 'resolved' &&
                     isDevicePrivateResolution(record) && (
                       <Text className='missing-queue__meta'>
@@ -492,11 +480,18 @@ export default function MissingTokenQueue({
                       >
                         <PictogramImage
                           className='missing-queue__online-image'
-                          src={onlineSuggestion.image}
+                          src={resolveTrustedImageUrl(apiBaseUrlFor('onlinePictograms'), onlineSuggestion.image) || onlineSuggestion.image}
                           label={onlineSuggestion.label}
                         />
                         <View className='missing-queue__online-copy'>
                           <Text className='missing-queue__online-label'>{onlineSuggestion.label}</Text>
+                          {onlineSuggestion.semantics?.requiresReview && (
+                            <Text className='missing-queue__online-source'>
+                              {onlineSuggestion.semantics.relation === 'conflict'
+                                ? '图片来源含义与当前词语不同，请核对图片后再决定。'
+                                : (getSemanticCandidateHint(onlineSuggestion.semantics) || '候选图片尚未确认含义，请结合原句核对。')}
+                            </Text>
+                          )}
                           <Text className='missing-queue__online-source'>
                             来源：{onlineSuggestion.source.name} · {onlineSuggestion.source.license}
                           </Text>
@@ -539,10 +534,10 @@ export default function MissingTokenQueue({
                       <Button
                         id={`missing-token-generate-ai-${record.id}`}
                         className='missing-queue__action'
-                        disabled={isBusy}
+                        disabled={isBusy || !runtimeCapabilities.aiFeatures}
                         onClick={() => void generateAiPictogram(record)}
                       >
-                        {isBusy ? '正在处理' : 'AI 生成图符'}
+                        {isBusy ? '正在处理' : runtimeCapabilities.aiFeatures ? 'AI 生成图符' : '本版本未开放 AI 生图'}
                       </Button>
                       {onlineSearchReady && (
                         <Button

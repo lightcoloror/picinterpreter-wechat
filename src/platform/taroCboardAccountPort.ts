@@ -1,3 +1,4 @@
+import { clearSavedPhraseUndoSession } from '@cboard-communication-core/savedPhraseUse'
 import Taro from '@tarojs/taro'
 
 import { apiBaseUrlFor } from '../config/runtimeCapabilities'
@@ -37,8 +38,8 @@ export const taroCboardSessionStore = {
   save(value: Parameters<typeof sessionStore.save>[0]) {
     const previous = sessionStore.load()?.user.id
     const result = sessionStore.save(value)
-    if (previous !== result?.user.id) Taro.eventCenter.trigger('care-identity-changed')
+    if (previous !== result?.user.id) { clearSavedPhraseUndoSession(); Taro.eventCenter.trigger('care-identity-changed') }
     return result
   },
-  clear() { sessionStore.clear(); Taro.eventCenter.trigger('care-identity-changed') }
+  clear() { clearSavedPhraseUndoSession(); sessionStore.clear(); Taro.eventCenter.trigger('care-identity-changed') }
 }

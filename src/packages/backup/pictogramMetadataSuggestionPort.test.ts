@@ -29,6 +29,14 @@ function createHarness(overrides: Record<string, unknown> = {}) {
 }
 
 describe('pictogram metadata suggestion port', () => {
+  it('blocks private person photos before reading or uploading the file', async () => {
+    const { port, dependencies } = createHarness()
+    const result = await port.suggest('wxfile://synthetic-private-person.png', { personalPerson: true })
+    expect(result.ok).toBe(false)
+    expect(dependencies.getFileSize).not.toHaveBeenCalled()
+    expect(dependencies.compressImage).not.toHaveBeenCalled()
+    expect(dependencies.uploadFile).not.toHaveBeenCalled()
+  })
   it('uploads an authenticated transient image and normalizes the result', async () => {
     const harness = createHarness()
 

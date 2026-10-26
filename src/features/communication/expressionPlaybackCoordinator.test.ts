@@ -52,6 +52,24 @@ function createPorts() {
 }
 
 describe('expression playback coordinator', () => {
+  test('a late successful frame cannot resume a cancelled mini-program sentence', async () => {
+    const ports = createPorts()
+    let current = true
+    let finish!: (result: {ok: boolean; message: string}) => void
+    ports.speechPort.speak = vi.fn(() => new Promise(resolve => { finish = resolve }))
+    const task = playExpressionSentence({
+      sentence: '我喝水谢谢',
+      output: [tile('i', '我'), tile('water', '喝水', 'wxfile://synthetic.mp3'), tile('thanks', '谢谢')],
+      ...ports,
+      isCurrent: () => current
+    })
+    finish({ ok: true, message: 'already queued completion' })
+    current = false
+    await expect(task).resolves.toMatchObject({ ok: false, reason: 'stopped' })
+    expect(ports.audioPort.play).not.toHaveBeenCalled()
+    expect(ports.speechPort.speak).toHaveBeenCalledTimes(1)
+  })
+
   test('reuses CBoard mixed TTS and recording order for the base sentence', async () => {
     const ports = createPorts()
     const output = [

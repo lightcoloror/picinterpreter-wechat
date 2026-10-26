@@ -7,6 +7,25 @@ const WANT_TILE = DEFAULT_BOARD_TILES.find(tile => tile.id === 'r1oHfCqTm9Yb')!
 const WATER_TILE = DEFAULT_BOARD_TILES.find(tile => tile.id === 'SystfA56X5KZ')!
 
 describe('WeChat communication repository bridge', () => {
+  test('reopens explicit rejection without accepting it into AI conversation history', () => {
+    const values = new Map<string, unknown>()
+    const api = {
+      getStorageSync: (key: string) => values.get(key) ?? '',
+      setStorageSync: (key: string, value: unknown) => values.set(key, value),
+      removeStorageSync: (key: string) => values.delete(key)
+    }
+    const first = createWechatCommunicationRepository(api)
+    const rejected = first.saveExpressionCandidateFeedbackDraft({
+      outputSignature: 'synthetic-person-b|pain', rejected: true,
+      candidates: [{ sentence: '林知岚痛。', feedback: null }]
+    })!
+    const reopened = createWechatCommunicationRepository(api)
+    expect(reopened.loadExpressionCandidateFeedbackDrafts()).toEqual([rejected])
+    expect(reopened.loadCommunicationHistory()).toEqual([])
+    expect(reopened.loadConversationContext().turns).toEqual([])
+    expect(reopened.removeExpressionCandidateFeedbackDraft(rejected.id)).toBe(true)
+    expect(createWechatCommunicationRepository(api).loadExpressionCandidateFeedbackDrafts()).toEqual([])
+  })
   test('persists and restores an expression through WeChat sync storage', () => {
     const values = new Map<string, unknown>()
     const repository = createWechatCommunicationRepository({
@@ -164,10 +183,8 @@ describe('WeChat communication repository bridge', () => {
       })
     )
     expect(
-      JSON.parse(String(values.get('cboard_communication_saved_phrases')))
+      JSON.parse(String(values.get('cboard_communication_favorite_state_v1'))).phrases
     ).toHaveLength(1)
-    expect(
-      JSON.parse(String(values.get('cboard_tuyujia_saved_phrases')))
-    ).toHaveLength(1)
+    expect(values.has('cboard_tuyujia_saved_phrases')).toBe(false)
   })
 })

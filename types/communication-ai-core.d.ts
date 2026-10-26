@@ -58,6 +58,8 @@ declare module '@cboard-communication-core/communicationAi' {
 
   export function buildCommunicationAiSentenceRequest(input: {
     output: Array<{ label?: string }>
+    boards?: BoardDTO[]
+    intl?: unknown
     context?: {
       scene?: import('@cboard-communication-core/conversationSession').ConversationScene
       turns?: Array<{
@@ -107,4 +109,9 @@ declare module '@cboard-communication-core/communicationAi' {
     sourceText?: string
     segments?: CommunicationAiResegmentResponse['segments']
   }
+}
+
+declare module '@cboard-communication-core/privatePersonAi' {
+  export function getPrivatePersonRequestIdentity(request: unknown): string
+  export function restorePrivatePersonAiResponse<T>(request: unknown, response: T, operation: string): T
 }

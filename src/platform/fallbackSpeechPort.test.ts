@@ -83,6 +83,8 @@ describe('fallback speech port', () => {
       message: '插件失败；登录后可使用服务端语音',
       reason: 'unavailable'
     })
+    primary.stop.mockClear()
+    fallback.stop.mockClear()
     port.stop()
     expect(primary.stop).toHaveBeenCalledOnce()
     expect(fallback.stop).toHaveBeenCalledOnce()

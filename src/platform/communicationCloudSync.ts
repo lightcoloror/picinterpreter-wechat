@@ -15,6 +15,7 @@ import {
   mergeVersionedCommunicationSavedPhrases,
   normalizeSavedPhraseTombstones
 } from '@cboard-communication-core/savedPhraseSync'
+import { assertSavedPhraseCapacity, normalizeCommunicationSavedPhraseList } from '@cboard-communication-core/savedPhraseManagement'
 import type {
   CommunicationHistoryEntry,
   CommunicationRepository,
@@ -34,6 +35,8 @@ type CloudSyncRepository = Pick<
   | 'loadCommunicationHistory'
   | 'loadCommunicationSavedPhraseTombstones'
   | 'loadCommunicationSavedPhrases'
+  | 'readFavoriteState'
+  | 'commitFavoriteState'
   | 'loadReceiverRecords'
   | 'overwriteCommunicationHistory'
   | 'overwriteCommunicationSavedPhraseTombstones'
@@ -101,8 +104,9 @@ export function createCommunicationCloudSyncService(options: {
     history: options.repository.loadCommunicationHistory()
   })
 
-  const overwriteLocalValue = (value: CommunicationCloudValue) => {
-    options.repository.overwriteCommunicationSavedPhrases(value.savedPhrases)
+  const overwriteLocalHistory = (value: CommunicationCloudValue) => {
+    // Receiver history synchronization must not rewrite a previously committed
+    // favorite transaction (including its order, revision and pending work).
     options.repository.overwriteCommunicationHistory(value.history)
     return getLocalValue()
   }
@@ -138,35 +142,14 @@ export function createCommunicationCloudSyncService(options: {
     token: string,
     legacySavedPhrases: CommunicationSavedPhraseEntry[] = []
   ): Promise<CommunicationSavedPhraseSyncResult> => {
-    let tombstones =
-      options.repository.loadCommunicationSavedPhraseTombstones()
+    try {
+    const expected = options.repository.readFavoriteState()
+    assertSavedPhraseCapacity(expected.phrases)
+    let tombstones = expected.tombstones
     const pendingTombstones = tombstones.filter(
       item => item.pending === true
     )
-    if (pendingTombstones.length) {
-      const deletion =
-        await options.settingsPort.deleteCommunicationSavedPhrases(
-          token,
-          pendingTombstones.map(item => item.id)
-        )
-      if (!deletion.ok || !deletion.value) {
-        return {
-          ok: false,
-          message: deletion.message,
-          conflictCount: 0
-        }
-      }
-      tombstones = normalizeSavedPhraseTombstones([
-        ...tombstones,
-        ...deletion.value.deletedPhrases
-      ])
-      options.repository.overwriteCommunicationSavedPhraseTombstones(
-        tombstones
-      )
-    }
-
-    const localPhrases =
-      options.repository.loadCommunicationSavedPhrases()
+    const localPhrases = expected.phrases
     const localIds = new Set(localPhrases.map(item => item.id))
     const localSentences = new Set(
       localPhrases.map(item =>
@@ -184,12 +167,22 @@ export function createCommunicationCloudSyncService(options: {
         !localSentences.has(sentence)
       )
     })
-    const seededPhrases = (
-      mergeCommunicationSupportSettings(
-        { savedPhrases: localPhrases, history: [] },
-        { savedPhrases: legacyAdditions, history: [] }
-      ) as CommunicationCloudValue
-    ).savedPhrases
+    const seededPhrases = normalizeCommunicationSavedPhraseList([
+      ...localPhrases, ...legacyAdditions
+    ])
+    assertSavedPhraseCapacity(seededPhrases)
+    if (pendingTombstones.length) {
+      const deletion = await options.settingsPort.deleteCommunicationSavedPhrases(
+        token, pendingTombstones.map(item => item.id)
+      )
+      if (!deletion.ok || !deletion.value) {
+        return { ok: false, message: deletion.message, conflictCount: 0 }
+      }
+      tombstones = normalizeSavedPhraseTombstones([
+        ...tombstones, ...deletion.value.deletedPhrases
+      ])
+      // A failed/overflowed merge must retain the pending local deletion receipt.
+    }
     const remote =
       await options.settingsPort.syncCommunicationSavedPhrases(
         token,
@@ -208,10 +201,9 @@ export function createCommunicationCloudSyncService(options: {
       remote.value.phrases,
       [...tombstones, ...remote.value.deletedPhrases]
     )
-    options.repository.overwriteCommunicationSavedPhraseTombstones(
-      merged.tombstones
-    )
-    options.repository.overwriteCommunicationSavedPhrases(merged.items)
+    options.repository.commitFavoriteState(expected, {
+      tombstones: merged.tombstones, phrases: merged.items
+    })
 
     return {
       ok: true,
@@ -223,6 +215,10 @@ export function createCommunicationCloudSyncService(options: {
         merged.conflictCount
       ),
       value: getLocalValue()
+    }
+    } catch (error) {
+      return { ok: false, conflictCount: 0,
+        message: error instanceof Error ? error.message : '同步未完成，原常用语和待办仍保留在本机，请重试。' }
     }
   }
 
@@ -272,7 +268,7 @@ export function createCommunicationCloudSyncService(options: {
         ? `确认后的接收记录已合并；${remote.value.conflictCount} 个冲突保留服务端确认内容。`
         : '确认后的接收记录已与云端合并。',
       conflictCount: remote.value.conflictCount,
-      value: overwriteLocalValue(merged)
+      value: overwriteLocalHistory(merged)
     }
   }
 
@@ -308,7 +304,7 @@ export function createCommunicationCloudSyncService(options: {
     return {
       ok: true,
       message: '接收记录已从本机删除。',
-      value: overwriteLocalValue({
+      value: overwriteLocalHistory({
         ...localValue,
         history: removeDeletedReceiverHistory(
           localValue.history,

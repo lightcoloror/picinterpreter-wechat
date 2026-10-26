@@ -13,6 +13,7 @@ describe('runtime capabilities', () => {
       hasPublicHttpsApi: false,
       cloudFeatures: false,
       aiFeatures: false,
+      textAiFeatures: false,
       ocr: false,
       onlinePictograms: false,
       dialectAsr: false

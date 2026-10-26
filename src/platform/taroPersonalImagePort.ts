@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro'
+import { verifyTaroLocalImage } from './taroLocalImageVerification'
 
 import {
   createPersonalImagePort,
@@ -37,6 +38,7 @@ async function removePrivateImage(filePath: string) {
 }
 
 export const taroPersonalImagePort = createPersonalImagePort({
+  verifyImage: verifyTaroLocalImage,
   chooseImage: async () => {
     const result = await Taro.chooseMedia({
       count: 1,

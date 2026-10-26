@@ -2,13 +2,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { expect, test } from 'vitest'
 import fixture from '@cboard-communication-core/fixtures/builtin15Reuse.json'
+import careActions from '@cboard-communication-core/fixtures/careActionReuse.json'
+import hygieneObjects from '@cboard-communication-core/fixtures/hygieneObjectReuse.json'
 import { buildCommunicationTileCatalog } from '@cboard-communication-core/symbolMatching'
 import { findSafeLocalMissingTokenResolutions, applyMissingTokenResolutions } from '@cboard-communication-core/missingTokens'
 import { DEFAULT_BOARD_FIXTURES } from '../../fixtures/defaultBoard'
 import { createWechatCommunicationRepository } from '../../platform/communicationRepository'
 import { runReceiverSession, buildConfirmedReceiverHistory, restoreReceiverWorkspaceFromRecord } from './receiverSession'
 
-const cases = fixture.cards.flatMap(card => card.tokens.map(token => ({ token, ...card })))
+const cases = [...fixture.cards,...careActions.cards,...hygieneObjects.cards].flatMap(card => card.tokens.map(token => ({ token, ...card })))
 
 test.each(cases)('matches and restores the packaged picture offline: $token', ({ token, id, label }) => {
   const descriptor = Object.getOwnPropertyDescriptor(Intl, 'Segmenter')!

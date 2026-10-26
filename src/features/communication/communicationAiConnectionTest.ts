@@ -1,3 +1,4 @@
+import { careErrorMessage } from '@cboard-communication-core/careErrors'
 import type { CommunicationAiPort } from '../../platform/communicationAiPort'
 
 type CommunicationAiConnectionTestPort = Pick<
@@ -8,6 +9,7 @@ type CommunicationAiConnectionTestPort = Pick<
 export interface CommunicationAiConnectionTestResult {
   ok: boolean
   message: string
+  code?: string
 }
 
 interface CommunicationAiConnectionTestOptions {
@@ -61,6 +63,7 @@ export async function runCommunicationAiConnectionTest(
     if (!result.ok || !result.value) {
       return {
         ok: false,
+        ...(result.code ? { code: result.code } : {}),
         message: result.message || 'AI 真实连接测试失败，本地沟通仍可正常使用。'
       }
     }
@@ -83,9 +86,10 @@ export async function runCommunicationAiConnectionTest(
   } catch (error) {
     return {
       ok: false,
+      ...(error instanceof CommunicationAiConnectionTimeoutError ? { code: 'AI_REQUEST_RESULT_UNKNOWN' } : {}),
       message:
         error instanceof CommunicationAiConnectionTimeoutError
-          ? 'AI 真实连接测试等待超过 10 秒，请检查网络或服务商。本地沟通仍可正常使用。'
+          ? careErrorMessage({ code: 'AI_REQUEST_RESULT_UNKNOWN' })
           : 'AI 真实连接测试失败，本地沟通仍可正常使用。'
     }
   }

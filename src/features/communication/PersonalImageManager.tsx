@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { currentImageOperationEpoch } from '@cboard-communication-core/imageOperationEpoch'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
   Input,
@@ -32,6 +33,7 @@ import {
 } from '@cboard-communication-core/symbolMatching'
 
 import { taroPersonalImagePort } from '../../platform/taroPersonalImagePort'
+import { verifyTaroLocalImage } from '../../platform/taroLocalImageVerification'
 import PictogramImage from '../../components/PictogramImage'
 import './PersonalImageManager.css'
 
@@ -55,8 +57,9 @@ interface PersonalImageManagerProps {
   }) => boolean
   onRemoveCuratedPublic: (
     boardId: string,
-    tileId: string
-  ) => boolean
+    tileId: string,
+    options?: { guard?: () => boolean }
+  ) => boolean | Promise<boolean>
   onOpenBoardManager: () => void
 }
 
@@ -82,6 +85,13 @@ export default function PersonalImageManager({
 }: PersonalImageManagerProps) {
   const [query, setQuery] = useState('')
   const [busyKey, setBusyKey] = useState('')
+  const savingRef = useRef(false)
+  const mountedRef = useRef(true)
+  const editableRef = useRef(canEditPreferences); editableRef.current = canEditPreferences
+  const libraryEditableRef = useRef(canEditLibrary); libraryEditableRef.current = canEditLibrary
+  const removingRef = useRef(false)
+  const preparedRef = useRef<{key:string;image:string;epoch:number}|null>(null)
+  useEffect(() => () => { mountedRef.current=false; preparedRef.current=null }, [])
   const [selectedKey, setSelectedKey] = useState('')
   const [attributionAuthor, setAttributionAuthor] = useState('')
   const [attributionLicense, setAttributionLicense] = useState<string>(
@@ -246,48 +256,35 @@ export default function PersonalImageManager({
   }
 
   const chooseImage = async (candidate: CommunicationCatalogItem) => {
-    if (!canEditPreferences) {
-      setNotice('当前档案为只读，不能更改熟悉图片。')
-      return
-    }
+    if (!canEditPreferences) { setNotice('当前档案为只读，不能更改熟悉图片。'); return }
+    if (savingRef.current) return
+    savingRef.current = true
     const key = preferenceKey(candidate.tile.id, candidate.boardId)
+    const epoch = currentImageOperationEpoch()
     const previous = preferenceByKey.get(key)
     setBusyKey(key)
-    const result = await taroPersonalImagePort.selectAndSave()
-
-    if (!result.ok || !result.image) {
-      setNotice(result.message)
-      setBusyKey('')
-      return
-    }
-
-    const saved = onSave({
-      tileId: candidate.tile.id,
-      boardId: candidate.boardId,
-      labelSnapshot: candidateLabel(candidate),
-      image: result.image,
-      pictogramAttribution:
-        (previous && previous.pictogramAttribution) ||
-        createDevicePrivatePictogramAttribution({
-          boardId: candidate.boardId,
-          tileId: candidate.tile.id,
-          label: candidateLabel(candidate)
-        })
-    })
-    if (!saved) {
-      await taroPersonalImagePort.remove(result.image)
-      setNotice('图片已选择，但本机偏好保存失败，请稍后重试。')
-      setBusyKey('')
-      return
-    }
-
-    if (previous && previous.image !== result.image) {
-      await taroPersonalImagePort.remove(previous.image)
-    }
-    setNotice(storageMode === 'care-profile'
-      ? `已为「${candidateLabel(candidate)}」设置家庭档案熟悉图片。`
-      : `已为「${candidateLabel(candidate)}」启用当前设备的熟悉图片。`)
-    setBusyKey('')
+    try {
+      const prepared = preparedRef.current
+      const result = prepared && prepared.key===key && prepared.epoch===epoch
+        ? {ok:true,image:prepared.image,message:''} : await taroPersonalImagePort.selectAndSave()
+      if (!mountedRef.current || epoch!==currentImageOperationEpoch() || !editableRef.current) return
+      if (!result.ok || !result.image) { setNotice(result.message); return }
+      preparedRef.current={key,image:result.image,epoch}
+      if ((await verifyTaroLocalImage(result.image)).status!=='available') {
+        preparedRef.current=null;setNotice('图片核验失败，请重新选择，原图片保持不变。');return
+      }
+      if (!mountedRef.current || epoch!==currentImageOperationEpoch() || !editableRef.current) return
+      const saved = onSave({ tileId:candidate.tile.id,boardId:candidate.boardId,
+        labelSnapshot:candidateLabel(candidate),image:result.image,
+        pictogramAttribution:(previous && previous.pictogramAttribution) || createDevicePrivatePictogramAttribution({
+          boardId:candidate.boardId,tileId:candidate.tile.id,label:candidateLabel(candidate) }) })
+      if (!saved) throw new Error('record not saved')
+      preparedRef.current=null
+      // Other favorites/history can still reference the previous file.
+      setNotice(storageMode==='care-profile' ? `已为「${candidateLabel(candidate)}」设置家庭档案熟悉图片。`
+        : `已为「${candidateLabel(candidate)}」启用当前设备的熟悉图片。`)
+    } catch (_) { if (mountedRef.current && epoch===currentImageOperationEpoch()) setNotice('图片已准备，但记录保存失败；点击重试保存，无需重新选择。') }
+    finally { savingRef.current=false;if(mountedRef.current)setBusyKey('') }
   }
 
   const restoreDefault = async (
@@ -307,7 +304,7 @@ export default function PersonalImageManager({
       return
     }
 
-    await taroPersonalImagePort.remove(preference.image)
+    // Keep files referenced by existing conversation snapshots.
     setNotice(`「${candidateLabel(candidate)}」已恢复 CBoard 默认图片。`)
     setBusyKey('')
   }
@@ -334,7 +331,7 @@ export default function PersonalImageManager({
     )
   }
 
-  const removeCuratedPictogram = (
+  const removeCuratedPictogram = async (
     boardId: string,
     tileId: string,
     label: string
@@ -343,12 +340,24 @@ export default function PersonalImageManager({
       setNotice('当前档案为只读，不能修改患者图库。')
       return
     }
-    const removed = onRemoveCuratedPublic(boardId, tileId)
-    setNotice(
-      removed
-        ? `已从个人板移除「${label}」，原公共图库不受影响。`
-        : `未能移除「${label}」，请稍后重试。`
-    )
+    if (removingRef.current) return
+    removingRef.current = true
+    const epoch = currentImageOperationEpoch()
+    const guard = () => mountedRef.current && epoch === currentImageOperationEpoch() && libraryEditableRef.current
+    setBusyKey(preferenceKey(tileId, boardId))
+    setNotice('正在确认移除…')
+    try {
+      const removed = await onRemoveCuratedPublic(boardId, tileId, { guard })
+      if (!guard()) return
+      setNotice(removed === true
+        ? `已从个人板移除「${label}」，可在上方撤销；原公共图库不受影响。`
+        : `移除尚未确认，请重试。`)
+    } catch (_) {
+      if (guard()) setNotice('移除尚未确认，请重试。')
+    } finally {
+      removingRef.current = false
+      if (mountedRef.current) setBusyKey('')
+    }
   }
 
   const renderCandidate = (
@@ -410,7 +419,7 @@ export default function PersonalImageManager({
             disabled={busy}
             onClick={() => chooseImage(candidate)}
           >
-            {busy ? '处理中…' : activePreference ? '更换照片' : '选择照片'}
+            {busy ? '处理中…' : preparedRef.current?.key === key ? '重试保存' : activePreference ? '更换照片' : '选择照片'}
           </Button>}
           {canEditPreferences && activePreference && (
             <Button
@@ -589,8 +598,9 @@ export default function PersonalImageManager({
                   {canEditLibrary && <View className='personal-image-card__actions'>
                     <Button
                       className='personal-image-action personal-image-action--danger'
+                      disabled={busyKey === preferenceKey(entry.tile.id, entry.boardId)}
                       onClick={() =>
-                        removeCuratedPictogram(
+                        void removeCuratedPictogram(
                           entry.boardId,
                           entry.tile.id,
                           entry.tile.label

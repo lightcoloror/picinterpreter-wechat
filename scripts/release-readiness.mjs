@@ -40,7 +40,7 @@ const isHttpsApiUrl = capabilityPolicy.isPublicHttpsApiUrl
 export function evaluateReleaseReadiness(config = {}, buildManifest = null) {
   const issues = []
   const publicTrialRequired = config.publicTrial === true || buildManifest?.publicTrial === true
-  const capabilityFields = ['cloudFeatures', 'aiFeatures', 'ocr', 'onlinePictograms', 'dialectAsr',
+  const capabilityFields = ['cloudFeatures', 'aiFeatures', 'textAiFeatures', 'ocr', 'onlinePictograms', 'dialectAsr',
     'careCollaboration', 'accountClosure', 'publicTrial']
   const manifestComplete = buildManifest && buildManifest.schema === 1 &&
     buildManifest.marker === 'cboard-release-feature-manifest-v1' &&
@@ -53,7 +53,7 @@ export function evaluateReleaseReadiness(config = {}, buildManifest = null) {
     issues.push('正式代码包必须使用 production release channel。')
   }
   // Missing evidence must never waive a network prerequisite.
-  const needsApi = publicTrialRequired || !manifestComplete || ['cloudFeatures', 'aiFeatures', 'ocr', 'dialectAsr']
+  const needsApi = publicTrialRequired || !manifestComplete || ['cloudFeatures', 'aiFeatures', 'textAiFeatures', 'ocr', 'dialectAsr']
     .some(field => buildManifest[field]) ||
     (buildManifest.onlinePictograms && Boolean(buildManifest.apiBaseUrl))
   const needsOnlinePictograms = !manifestComplete || buildManifest.onlinePictograms

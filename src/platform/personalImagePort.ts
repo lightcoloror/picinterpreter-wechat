@@ -1,3 +1,5 @@
+import { currentImageOperationEpoch } from '@cboard-communication-core/imageOperationEpoch'
+
 export interface PersonalImagePortResult {
   ok: boolean
   message: string
@@ -46,6 +48,7 @@ export async function preparePersonalImagePath(
 }
 
 interface PersonalImagePortDependencies {
+  verifyImage?: (source: string) => Promise<{ status: string }>
   chooseImage: () => Promise<{
     tempFilePath: string
     mediaType?: 'image' | 'gif'
@@ -69,6 +72,7 @@ export function createPersonalImagePort(
 ): PersonalImagePort {
   return {
     async selectAndSave() {
+      const epoch = currentImageOperationEpoch()
       try {
         const selected = await dependencies.chooseImage()
         if (!selected) {
@@ -86,6 +90,11 @@ export function createPersonalImagePort(
           return { ok: false, message: '图片无法保存到微信本机。' }
         }
 
+        if (!dependencies.verifyImage || (await dependencies.verifyImage(savedFilePath)).status !== 'available') {
+          return { ok: false, message: '图片保存后未通过本机读取和解码核验，尚未采用，请重试。' }
+        }
+
+        if (epoch !== currentImageOperationEpoch()) return { ok: false, message: '操作范围已变化，图片未采用。' }
         return {
           ok: true,
           message: '图片已保存到当前设备。',

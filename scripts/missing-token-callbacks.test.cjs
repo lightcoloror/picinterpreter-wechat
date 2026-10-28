@@ -56,6 +56,21 @@ function fixture(status='new'){
     restart:()=>createCommunicationRepository(options),removed,setWriteFailure:value=>{rejectWrites=value;},setCleanupResult:value=>{cleanupResult=value;},failReferenceCheck:()=>{referenceCheckFails=true;}};
 }
 const found=(p=picture)=>({ok:true,value:[{token:'停车场',pictogram:p}]});
+test('recording receiver gaps stays local even with online search enabled; explicit search remains usable',async()=>{
+  const f=fixture();let implicitSearches=0;
+  const record=extract('recordMissingTokens',{
+    ...f.context,preparationMode:false,preferences:{onlinePictogramSearchEnabled:true},
+    taroPictogramSearchPort:{...f.port,configured:true},
+    attemptedAutomaticMissingTokenIdsRef:{current:new Set()},
+    searchMissingTokensOnline:()=>{implicitSearches++;return Promise.resolve({ok:true});}
+  });
+  assert.equal(record({tokens:['停车场'],rawText:'停车场在哪里'}),true);
+  assert.equal(implicitSearches,0);assert.equal(f.pending.length,0);
+  const task=f.search([f.record.id]);
+  assert.equal(f.pending.length,1);
+  f.pending[0].resolve(found());await task;
+  assert.equal(f.current().status,'suggested');
+});
 for(const mode of ['search','cache']){
   for(const action of ['ignore','manual','scope','hide']){
     test(`${mode}: ${action} wins over a late result`,async()=>{

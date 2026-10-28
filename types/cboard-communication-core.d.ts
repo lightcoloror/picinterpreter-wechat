@@ -623,6 +623,13 @@ declare module '@cboard-communication-core/receiverPipeline' {
     needsReview: boolean
   }
 
+  export function isReceiverPunctuation(token: string): boolean
+  export function prepareReceiverAssistedItems(items: ReceiverReviewItem[]): ReceiverReviewItem[]
+  export function buildReceiverMeaningAssessment(inputText: string, items: Array<{token: string; id?: string; matchType?: string; personalReference?: boolean; tile?: {textOnly?: boolean; tile?: unknown} | null; sourceSpan?: ReceiverReviewItem['sourceSpan']}>): {
+    pictureCount: number; meaningfulCount: number; textReferenceCount: number; requiresAssistance: boolean
+    unresolvedMeaningItems: Array<{itemId: string | null; token: string; role: string; reason: string; explanation?: string; sourceSpan: ReceiverReviewItem['sourceSpan'] | null}>
+  }
+
   export interface ReceiverHistoryEntry {
     repairOfRecordId?: string
     repairSourceSessionId?: string

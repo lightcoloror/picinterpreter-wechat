@@ -167,8 +167,6 @@ function ReceiverPageWorkspace() {
   const [missingTokenItems, setMissingTokenItems] = useState(
     initialMissingTokensRef.current
   )
-  const attemptedAutomaticMissingTokenIdsRef =
-    useRef(new Set<string>())
   // Reuse the Web scope/version guard; per-record tickets also reject older
   // searches and downloads when requests complete out of order.
   const missingTokenRequestsRef = useRef(new Map<string, object>())
@@ -520,31 +518,8 @@ function ReceiverPageWorkspace() {
       const next = repositoryRef.current.recordMissingTokens(entry)
       setMissingTokenItems(next)
 
-      if (
-        !preparationMode &&
-        preferences.onlinePictogramSearchEnabled &&
-        taroPictogramSearchPort.configured
-      ) {
-        const recordIds = next
-          .filter(
-            record =>
-              record.status === 'new' &&
-              !attemptedAutomaticMissingTokenIdsRef.current.has(
-                record.id
-              )
-          )
-          .map(record => record.id)
-          .slice(0, 12)
-        recordIds.forEach(recordId =>
-          attemptedAutomaticMissingTokenIdsRef.current.add(recordId)
-        )
-        if (recordIds.length) {
-          void searchMissingTokensOnline(recordIds).catch(() => {
-            // Keep the text and manual retry entry available after transport failure.
-          })
-        }
-      }
-
+      // Recording or restoring a gap is local work. The existing search button
+      // is the explicit network boundary, including when online search is enabled.
       return true
     } catch (error) {
       return false

@@ -5,11 +5,11 @@
   "decision": "Mulberry 可在履行署名和同方式共享后使用；ARASAAC 与 CBoard 待处理项在批准前阻断正式发布。",
   "reason": "公司主体发布可能构成商业使用，不能把非商业或不明确许可当作已批准。",
   "evidence": {
-    "mulberry": 812,
+    "mulberry": 816,
     "arasaac": 63,
     "cboard": 17
   },
-  "effectiveScope": "微信小程序随包的 46 个默认板和 892 个图卡。",
+  "effectiveScope": "微信小程序随包的 46 个默认板和 896 个图卡。",
   "items": [
     {
       "boardId": "root",
@@ -778,7 +778,7 @@
       "labelKey": "symbol.foodEggs.boiledEgg",
       "provider": "mulberry",
       "sourceImage": "/symbols/mulberry/boiled_egg.svg",
-      "originalId": "",
+      "originalId": "boiled_egg.svg",
       "image": "/assets/cboard-default/82c71c006ccd927c.png"
     },
     {
@@ -1108,7 +1108,7 @@
       "labelKey": "symbol.foodPastasAndRice.rice",
       "provider": "mulberry",
       "sourceImage": "/symbols/mulberry/rice.svg",
-      "originalId": "",
+      "originalId": "rice.svg",
       "image": "/assets/cboard-default/f0dba162cd88a73b.png"
     },
     {
@@ -1352,6 +1352,17 @@
       "sourceImage": "/symbols/mulberry/brussel_sprouts.svg",
       "originalId": "",
       "image": "/assets/cboard-default/fb772b0de4e49dcb.png"
+    },
+    {
+      "boardId": "r1ftpPhPa-",
+      "boardName": "蔬菜",
+      "tileId": "tuyujia-builtin-egg",
+      "label": "鸡蛋",
+      "labelKey": "",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/egg.svg",
+      "originalId": "egg.svg",
+      "image": "/assets/cboard-default/971e87bd264aae7b.png"
     },
     {
       "boardId": "HJmKTw2vT-",
@@ -3114,6 +3125,17 @@
       "image": "/assets/cboard-default/1d4cb4e0bb0cca58.png"
     },
     {
+      "boardId": "BJRtpPnP6b",
+      "boardName": "时间",
+      "tileId": "tuyujia-builtin-night-candidate",
+      "label": "夜晚",
+      "labelKey": "",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/night.svg",
+      "originalId": "night.svg",
+      "image": "/assets/cboard-default/b7f61e3b4b636486.png"
+    },
+    {
       "boardId": "ry1eFpwhDp-",
       "boardName": "动物",
       "tileId": "S1G4m0567qYZ",
@@ -4036,6 +4058,28 @@
       "sourceImage": "/symbols/mulberry/photographs.svg",
       "originalId": "",
       "image": "/assets/cboard-default/454366637d1ba144.png"
+    },
+    {
+      "boardId": "BkmeFaw3DpZ",
+      "boardName": "活动",
+      "tileId": "tuyujia-builtin-heat-food",
+      "label": "锅内加热",
+      "labelKey": "",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/heat_,_to.svg",
+      "originalId": "heat_,_to.svg",
+      "image": "/assets/cboard-default/ac3d34a8e33a916a.png"
+    },
+    {
+      "boardId": "BkmeFaw3DpZ",
+      "boardName": "活动",
+      "tileId": "tuyujia-builtin-stir-fry",
+      "label": "炒菜",
+      "labelKey": "",
+      "provider": "mulberry",
+      "sourceImage": "/symbols/mulberry/stir_fry_,_to.svg",
+      "originalId": "stir_fry_,_to.svg",
+      "image": "/assets/cboard-default/b79217673faa382c.png"
     },
     {
       "boardId": "S1VlYTPnwTZ",

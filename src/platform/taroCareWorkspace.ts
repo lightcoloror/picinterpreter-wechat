@@ -5,6 +5,7 @@ import { createCareSync } from '@cboard-communication-core/careSync'
 import { projectCareBoards, queueCareBoards } from '@cboard-communication-core/careProjection'
 import { encodeCareMedia, decodeCareMedia } from '@cboard-communication-core/careMediaValues'
 import { sameCareFavoriteContent } from '@cboard-communication-core/careFavoriteChanges'
+import { assertSavedPhraseCapacity } from '@cboard-communication-core/savedPhraseManagement'
 import { projectCareSharedPhrases } from '@cboard-communication-core/careSharedPhrases'
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
@@ -24,6 +25,16 @@ import { assertCareAiRequestScope } from './taroCommunicationAiPort'
 let active: { key: string; engine: ReturnType<typeof createCareSync> } | null = null
 let pending: Promise<void> | null = null
 let stopWatch: (() => void) | null = null
+export function hasCareFavoriteProjection(
+  snapshot: { cursor?: number; resources: Record<string, { kind?: string }> },
+  kind: string
+) {
+  // A fresh engine has cursor -1 and no authoritative favorite snapshot.
+  // Explicit local records (including deletions) or a received server cursor
+  // establish a projection; an unrelated board alone does not.
+  return (typeof snapshot.cursor === 'number' && snapshot.cursor >= 0) ||
+    Object.values(snapshot.resources).some(resource => resource.kind === kind)
+}
 export function loadCareSharedPhrases() {
   if (!currentCareContext()?.profileId || Taro.getStorageSync(careScopedKey('care-locked'))) return []
   return Taro.getStorageSync(careScopedKey('care-shared-favorites')) || []
@@ -99,7 +110,7 @@ function project(
       const repository = createTaroCommunicationRepository()
       const kind = currentCareContext()?.selection?.relationship?.role === 'patient' ? 'favorite' : 'personalFavorite'
       const favorites = Object.values(snapshot.resources).filter((r: any) => !r.deleted && r.kind === kind)
-      if (!createTaroFavoriteStateStore().read().pending) repository.overwriteCommunicationSavedPhrases(preserveCareLocalFavoriteMedia(favorites.map((r: any) => ({ ...decodeCareMedia(r.value, snapshot.media, image), id: r.id, createdAt: r.value.createdAt || r.updatedAt || 1 })), repository.loadCommunicationSavedPhrases(), expectedContext, current || expectedContext))
+      if (hasCareFavoriteProjection(snapshot, kind) && !createTaroFavoriteStateStore().read().pending) repository.overwriteCommunicationSavedPhrases(preserveCareLocalFavoriteMedia(favorites.map((r: any) => ({ ...decodeCareMedia(r.value, snapshot.media, image), id: r.id, createdAt: r.value.createdAt || r.updatedAt || 1 })), repository.loadCommunicationSavedPhrases(), expectedContext, current || expectedContext))
       const preferences = snapshot.resources['preference:personalImagePreferences']
       if (preferences && !preferences.deleted && !Taro.getStorageSync(careScopedKey('care-pending-personalImagePreferences'))) repository.overwritePersonalImagePreferences(decodeCareMedia(preferences.value.value, snapshot.media, image))
     })
@@ -125,15 +136,18 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
       await engine.init()
     }
     const engine = active.engine
+    let projectAfterSync = true
     try {
+      const favoriteStore = createTaroFavoriteStateStore()
+      const favoriteSnapshot = favoriteStore.read()
+      if (!options.localOnly) assertSavedPhraseCapacity(favoriteSnapshot.phrases || [])
+      const favorites = favoriteSnapshot.pending
+      if (favorites) assertSavedPhraseCapacity(Array.isArray(favorites) ? favorites : favorites.items)
       const raw = Taro.getStorageSync(scoped('care-pending-boards'))
       if (raw) {
         await queueCareBoards(engine, JSON.parse(String(raw)), readImage)
         if (Taro.getStorageSync(scoped('care-pending-boards')) === raw) Taro.removeStorageSync(scoped('care-pending-boards'))
       }
-      const favoriteStore = createTaroFavoriteStateStore()
-      const favoriteSnapshot = favoriteStore.read()
-      const favorites = favoriteSnapshot.pending
       if (favorites) {
         const kind = context.selection?.relationship?.role === 'patient' ? 'favorite' : 'personalFavorite'
         const packet = favorites
@@ -141,8 +155,10 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
         const base = Array.isArray(packet) ? undefined : packet.base
         for (const item of items) {
           const original = base?.find((entry: any) => entry.id === item.id)
-          if (original && sameCareFavoriteContent(original, item)) continue
           const old = engine.view().resources[`${kind}:${item.id}`]
+          // A local baseline is not proof the engine persisted that item.
+          // Keep an existing engine tombstone authoritative for unchanged data.
+          if (old && original && sameCareFavoriteContent(original, item)) continue
           const value = await encodeCareMedia(item, engine, readImage)
           if (!old || JSON.stringify(old.value) !== JSON.stringify(value)) await engine.edit(kind, item.id, value)
         }
@@ -211,7 +227,23 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
           throw error
         }
       }
-    } finally { if (currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) project(engine, context) }
+    } catch (error: any) {
+      if (error?.code === 'SAVED_PHRASE_CAPACITY') {
+        projectAfterSync = false
+        if (!options.automatic) void Taro.showModal({ title: '常用语同步已暂停', content: error.message, showCancel: false })
+      }
+      throw error
+    } finally {
+      if (projectAfterSync && currentCareContext()?.accountId === context.accountId && careScopedKey('workspace') === key) {
+        try { project(engine, context) }
+        catch (error: any) {
+          if (error?.code === 'SAVED_PHRASE_CAPACITY' && !options.automatic) {
+            void Taro.showModal({ title: '常用语同步已暂停', content: error.message, showCancel: false })
+          }
+          throw error
+        }
+      }
+    }
   })().finally(() => { pending = null })
   return pending
 }

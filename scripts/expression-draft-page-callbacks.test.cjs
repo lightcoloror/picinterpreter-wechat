@@ -100,6 +100,20 @@ test('confirm uses shared idempotent service and storage failure cannot pretend 
   assert.equal(extract('appendHistory', context)({ sentence: record.sentence }), null);
 });
 
+test('favorite save preserves the precise capacity error for the workspace and only refreshes after success', () => {
+  const full = Object.assign(new Error('常用语已达到容量上限（100条），请先整理已有收藏。'), { code: 'SAVED_PHRASE_CAPACITY' });
+  const entry = { sentence: '合成林安今晚不回家吃饭。', output: [] }, refreshed = [];
+  const repository = { overwriteCommunicationSavedPhrases() { throw full; }, loadCommunicationSavedPhrases: () => [entry] };
+  const save = extract('savePhrase', { repositoryRef: { current: repository },
+    addCommunicationSavedPhrase: () => ({ changed: true, item: entry, items: [entry] }),
+    setSavedPhraseItems: value => refreshed.push(value) });
+  assert.throws(() => save(entry), error => error === full);
+  assert.equal(refreshed.length, 0);
+  repository.overwriteCommunicationSavedPhrases = () => entry;
+  assert.equal(save(entry), true);
+  assert.deepEqual(refreshed, [[entry]]);
+});
+
 function confirmedReuseFixture() {
   const output = [
     { id: 'same', label: '合成林安', personId: 'synthetic-a' },

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import { createCommunicationCloudSyncService } from './communicationCloudSync'
+import { createCommunicationRepository, COMMUNICATION_STORAGE_KEYS } from '@cboard-communication-core/repository'
 
 test('care mode without an active profile never falls back to legacy network routes', async () => {
   vi.stubEnv('TARO_APP_CARE_COLLABORATION', 'true')
@@ -47,6 +48,13 @@ function createHarness() {
     confirmedAt: 150
   }]
   const repository = {
+    readFavoriteState: vi.fn(() => ({ version: 1 as const, generation: 'g1', scope: 'synthetic', revision: 0,
+      phrases: savedPhrases, tombstones: savedPhraseTombstones, pending: null })),
+    commitFavoriteState: vi.fn((expected, changes) => {
+      savedPhrases = changes.phrases
+      savedPhraseTombstones = changes.tombstones
+      return { ...expected, ...changes, revision: expected.revision + 1 }
+    }),
     loadCommunicationSavedPhrases: vi.fn(() => savedPhrases),
     loadCommunicationSavedPhraseTombstones: vi.fn(
       () => savedPhraseTombstones
@@ -174,6 +182,130 @@ function createHarness() {
 }
 
 describe('communicationCloudSync', () => {
+  const capacityPhrases = (count: number) => Array.from({ length: count }, (_, index) => ({
+    id: `capacity-${index}`, sentence: `合成容量${index}`, output: [], usageCount: 0,
+    createdAt: 100 + index, lastUsedAt: 100 + index, updatedAt: 100 + index
+  }))
+
+  test.each([99, 100])('uploads all %i local phrases and retains them', async count => {
+    const harness = createHarness()
+    harness.repository.overwriteCommunicationSavedPhrases(capacityPhrases(count))
+    expect((await harness.service.upload('token')).ok).toBe(true)
+    expect(harness.settingsPort.syncCommunicationSavedPhrases.mock.calls[0][1]).toHaveLength(count)
+    expect(harness.repository.loadCommunicationSavedPhrases()).toHaveLength(count)
+  })
+
+  test('101 existing phrases stop upload before requests and preserve pending deletion', async () => {
+    const harness = createHarness()
+    const local = capacityPhrases(101)
+    harness.repository.overwriteCommunicationSavedPhrases(local)
+    const pending = [{ id: 'old-deleted', pending: true, deletedAt: 500 }]
+    harness.repository.overwriteCommunicationSavedPhraseTombstones(pending)
+    harness.repository.overwriteCommunicationSavedPhrases.mockClear()
+    harness.repository.overwriteCommunicationSavedPhraseTombstones.mockClear()
+    const result = await harness.service.upload('token')
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/100|容量/)
+    for (const request of Object.values(harness.settingsPort)) expect(request).not.toHaveBeenCalled()
+    expect(harness.repository.loadCommunicationSavedPhrases()).toEqual(local)
+    expect(harness.repository.loadCommunicationSavedPhraseTombstones()).toEqual(pending)
+    expect(harness.repository.overwriteCommunicationSavedPhrases).not.toHaveBeenCalled()
+    expect(harness.repository.overwriteCommunicationSavedPhraseTombstones).not.toHaveBeenCalled()
+  })
+
+  test('99 plus 2 merged remote entries reject overwrite and safely retry after capacity is freed', async () => {
+    const harness = createHarness()
+    const local = capacityPhrases(99)
+    const remote = capacityPhrases(101).slice(99)
+    harness.repository.overwriteCommunicationSavedPhrases(local)
+    harness.repository.overwriteCommunicationSavedPhrases.mockClear()
+    harness.settingsPort.syncCommunicationSavedPhrases.mockImplementation(async () => ({
+      ok: true, message: 'ok', value: { phrases: remote, deletedPhrases: [], deletedPhraseIds: [], acceptedCount: 99, conflictCount: 0, conflictedPhraseIds: [] }
+    }))
+    const result = await harness.service.upload('token')
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/100|容量/)
+    expect(harness.repository.loadCommunicationSavedPhrases()).toEqual(local)
+    expect(harness.repository.overwriteCommunicationSavedPhrases).not.toHaveBeenCalled()
+    expect(harness.repository.overwriteCommunicationSavedPhraseTombstones).not.toHaveBeenCalled()
+    expect(harness.settingsPort.updateSettings).not.toHaveBeenCalled()
+    harness.repository.overwriteCommunicationSavedPhrases(local.slice(1))
+    expect((await harness.service.upload('token')).ok).toBe(true)
+    expect(harness.repository.loadCommunicationSavedPhrases()).toHaveLength(100)
+  })
+
+  test('verified repository write failure preserves all 99 phrases and pending deletions for retry', async () => {
+    const harness = createHarness()
+    const pending = [{ id: 'old-deleted', deletedAt: 500, pending: true, serverVersion: 0 }]
+    const values = new Map([
+      [COMMUNICATION_STORAGE_KEYS.savedPhrases, JSON.stringify(capacityPhrases(99))],
+      [COMMUNICATION_STORAGE_KEYS.savedPhraseTombstones, JSON.stringify(pending)]
+    ])
+    let fail = false
+    const repository = createCommunicationRepository({ storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { if (!fail) values.set(key, value) }
+    }, now: () => 1000 })
+    const service = createCommunicationCloudSyncService({ repository, settingsPort: harness.settingsPort })
+    harness.settingsPort.syncCommunicationSavedPhrases.mockImplementation(async () => ({
+      ok: true, message: 'ok', value: { phrases: capacityPhrases(100), deletedPhrases: [], deletedPhraseIds: [], acceptedCount: 99, conflictCount: 0, conflictedPhraseIds: [] }
+    }))
+    const before = repository.readFavoriteState()
+    fail = true
+    expect((await service.upload('token')).ok).toBe(false)
+    expect(repository.readFavoriteState()).toEqual(before)
+    fail = false
+    expect((await service.upload('token')).ok).toBe(true)
+    expect(repository.loadCommunicationSavedPhrases()).toHaveLength(100)
+    expect(repository.loadCommunicationSavedPhraseTombstones()[0].pending).not.toBe(true)
+    const success = repository.readFavoriteState()
+    expect((await service.upload('token')).ok).toBe(true)
+    expect(repository.readFavoriteState()).toEqual(success)
+  })
+
+  test('a new local favorite during synchronization invalidates the old snapshot instead of overwriting it', async () => {
+    const harness = createHarness()
+    const values = new Map([[COMMUNICATION_STORAGE_KEYS.savedPhrases, JSON.stringify(capacityPhrases(99))]])
+    const repository = createCommunicationRepository({ storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value) }
+    }, now: () => 1000 })
+    const service = createCommunicationCloudSyncService({ repository, settingsPort: harness.settingsPort })
+    harness.settingsPort.syncCommunicationSavedPhrases.mockImplementation(async (_token, entries) => {
+      repository.saveCommunicationPhrase({ id: 'during-sync', sentence: '同步期间新合成句', output: [], createdAt: 1000 })
+      return { ok: true, message: 'ok', value: { phrases: entries, deletedPhrases: [], deletedPhraseIds: [], acceptedCount: 99, conflictCount: 0, conflictedPhraseIds: [] } }
+    })
+    expect((await service.upload('token')).ok).toBe(false)
+    const saved = repository.loadCommunicationSavedPhrases()
+    expect(saved).toHaveLength(100)
+    expect(saved[0].id).toBe('during-sync')
+    expect(harness.settingsPort.updateSettings).not.toHaveBeenCalled()
+  })
+
+  test('written favorite state with a lost receipt retries without duplicating or clearing newer content', async () => {
+    const harness = createHarness()
+    const values = new Map([[COMMUNICATION_STORAGE_KEYS.savedPhrases, JSON.stringify(capacityPhrases(99))]])
+    let loseReceipt = false
+    const repository = createCommunicationRepository({ storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        values.set(key, value)
+        if (loseReceipt) { loseReceipt = false; throw new Error('合成回执丢失') }
+      }
+    }, now: () => 1000 })
+    const service = createCommunicationCloudSyncService({ repository, settingsPort: harness.settingsPort })
+    repository.readFavoriteState()
+    harness.settingsPort.syncCommunicationSavedPhrases.mockImplementation(async () => ({
+      ok: true, message: 'ok', value: { phrases: capacityPhrases(100), deletedPhrases: [], deletedPhraseIds: [], acceptedCount: 100, conflictCount: 0, conflictedPhraseIds: [] }
+    }))
+    loseReceipt = true
+    expect((await service.upload('token')).ok).toBe(false)
+    const written = repository.readFavoriteState()
+    expect(written.phrases).toHaveLength(100)
+    expect((await service.upload('token')).ok).toBe(true)
+    expect(repository.readFavoriteState()).toEqual(written)
+  })
+
   test('merges legacy remote settings locally and writes both settings keys', async () => {
     const harness = createHarness()
     const result = await harness.service.sync('token')
@@ -184,8 +316,8 @@ describe('communicationCloudSync', () => {
     expect(result.message).toContain('处理 0 个设置冲突')
     expect(result.message).toContain('0 个确认接收记录冲突')
     expect(result.value?.savedPhrases.map(item => item.sentence)).toEqual([
-      '我要去厕所',
-      '我想喝水'
+      '我想喝水',
+      '我要去厕所'
     ])
     expect(harness.settingsPort.updateSettings).toHaveBeenCalledWith(
       'token',

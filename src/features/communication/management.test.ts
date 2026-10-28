@@ -3,6 +3,7 @@ import type { CommunicationRepository } from '@cboard-communication-core/reposit
 
 import { DEFAULT_BOARD_FIXTURES, DEFAULT_BOARD_TILES } from '../../fixtures/defaultBoard'
 import { createCommunicationManagementService } from './management'
+import { createWechatCommunicationRepository } from '../../platform/communicationRepository'
 
 function createRepository(): CommunicationRepository {
   let savedPhrases: any[] = []
@@ -54,6 +55,76 @@ function createRepository(): CommunicationRepository {
 }
 
 describe('WeChat communication management service', () => {
+  test('history favorite retries a lost write receipt without a second favorite or altered images', () => {
+    const values = new Map<string, unknown>([['cboard_communication_saved_phrases', JSON.stringify(Array.from({ length: 99 }, (_, index) => ({
+      id: `old-${index}`, sentence: `合成旧句${index}`, output: [], createdAt: index + 1
+    })))]] )
+    const repository = createWechatCommunicationRepository({
+      getStorageSync: key => values.get(key) ?? '', setStorageSync: (key, value) => { values.set(key, value) }, removeStorageSync: key => { values.delete(key) }
+    })
+    repository.overwriteCommunicationHistory([{ id: 'history-receipt', direction: 'express', createdAt: 10, sentence: '我今晚不回家吃饭',
+      output: [{ id: 'same', label: '合成林安', personId: 'synthetic-a' }, { id: 'same', label: '合成林安', personId: 'synthetic-b' }] }])
+    const before = repository.loadCommunicationHistory()
+    const write = repository.overwriteCommunicationSavedPhrases
+    let writes = 0
+    repository.overwriteCommunicationSavedPhrases = (...args) => {
+      const saved = write(...args); writes++
+      if (writes === 1) throw new Error('合成写入后回执失败')
+      return saved
+    }
+    const service = createCommunicationManagementService({ repository, boards: DEFAULT_BOARD_FIXTURES })
+    expect(() => service.toggleHistoryFavorite('history-receipt')).toThrow(/回执失败/)
+    expect(repository.loadCommunicationHistory()).toEqual(before)
+    expect(repository.loadCommunicationSavedPhrases()).toHaveLength(100)
+    const saved = repository.loadCommunicationSavedPhrases()
+    service.toggleHistoryFavorite('history-receipt')
+    expect(writes).toBe(1)
+    expect(repository.loadCommunicationSavedPhrases()).toEqual(saved)
+    expect(repository.loadCommunicationHistory()[0].isFavorite).toBe(true)
+    expect(repository.loadCommunicationHistory()[0].output).toEqual(before[0].output)
+  })
+  test.each([99, 100, 101])('real adapter protects %i existing phrases during history favorite and retry', count => {
+    const previous = Array.from({ length: count }, (_, index) => ({
+      id: `capacity-${index}`, sentence: `合成表达${index}`, createdAt: index + 1,
+      output: [{ id: 'same', label: '合成林安', personId: `synthetic-${index}`, image: '/synthetic.png' }]
+    }))
+    const values = new Map<string, unknown>([['cboard_communication_saved_phrases', JSON.stringify(previous)]])
+    let fail = false
+    const api = { getStorageSync: (key: string) => values.get(key) ?? '',
+      setStorageSync: (key: string, value: unknown) => {
+        if (fail && key.includes('favorite_state')) throw new Error('合成收藏写入失败')
+        values.set(key, value)
+      }, removeStorageSync: (key: string) => { values.delete(key) } }
+    const repository = createWechatCommunicationRepository(api)
+    repository.overwriteCommunicationHistory([{
+      id: 'synthetic-history', sentence: '我今晚不回家吃饭', direction: 'express', createdAt: 2,
+      output: [{ id: 'same', label: '合成林安', personId: 'synthetic-a' }, { id: 'same', label: '合成林安', personId: 'synthetic-b' }]
+    }])
+    const service = createCommunicationManagementService({ repository, boards: DEFAULT_BOARD_FIXTURES })
+    const before = repository.loadCommunicationSavedPhrases(), historyBefore = repository.loadCommunicationHistory()
+    if (count >= 100) {
+      expect(() => service.toggleHistoryFavorite('synthetic-history')).toThrow(/容量上限/)
+      expect(repository.loadCommunicationSavedPhrases()).toEqual(before)
+      expect(repository.loadCommunicationHistory()).toEqual(historyBefore)
+      while (repository.loadCommunicationSavedPhrases().length >= 100)
+        repository.deleteCommunicationSavedPhrase(repository.loadCommunicationSavedPhrases().at(-1)!.id)
+    } else {
+      fail = true
+      expect(() => service.toggleHistoryFavorite('synthetic-history')).toThrow(/合成收藏写入失败/)
+      expect(repository.loadCommunicationHistory()).toEqual(historyBefore)
+      expect(repository.loadCommunicationSavedPhrases()).toEqual(before)
+      fail = false
+    }
+    service.toggleHistoryFavorite('synthetic-history')
+    const reopened = createWechatCommunicationRepository(api)
+    expect(reopened.loadCommunicationSavedPhrases()).toHaveLength(100)
+    expect(reopened.loadCommunicationSavedPhrases().filter(item => item.sentence === '我今晚不回家吃饭')).toHaveLength(1)
+    expect(reopened.loadCommunicationSavedPhrases().find(item => item.sentence === '我今晚不回家吃饭')!.output).toEqual(historyBefore[0].output)
+    expect(reopened.loadCommunicationHistory()[0].isFavorite).toBe(true)
+    expect(reopened.loadCommunicationHistory()[0].output).toEqual(historyBefore[0].output)
+    for (const old of repository.loadCommunicationSavedPhrases().filter(item => item.id.startsWith('capacity-')))
+      expect(old).toEqual(before.find(item => item.id === old.id))
+  })
   test('two-phase import preserves existing phrases, refreshes stale previews and keeps retry safe', () => {
     const repository = createRepository()
     let scope = 'one'

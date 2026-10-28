@@ -49,6 +49,26 @@ function extract(name, context) {
   vm.runInNewContext(code, box);
   return box.module.exports;
 }
+
+test('favorite capacity failure shows the exact reason and preserves the selected content for retry', () => {
+  const savedPhrase = { sentence: '合成林安今晚不回家吃饭。', output: [{ id: 'same', personId: 'synthetic-a' }, { id: 'same', personId: 'synthetic-b' }] };
+  const before = JSON.stringify(savedPhrase), notices = [], writes = [];
+  let fail = true;
+  const save = extract('handleSavePhrase', {
+    candidatesRejectedRef: { current: false }, invalidatePendingShare() {}, invalidatePendingAi() {},
+    session: { pipeline: {} }, buildExpressionSavedPhraseEntry: () => savedPhrase,
+    onSavePhrase(value) { writes.push(value); if (fail) throw Object.assign(new Error('常用语已达到容量上限（100条），请先整理已有收藏。'), { code: 'SAVED_PHRASE_CAPACITY' }); return true; },
+    setNotice: value => notices.push(value)
+  });
+  assert.doesNotThrow(() => save());
+  assert.match(notices.at(-1), /容量上限/);
+  assert.doesNotMatch(notices.at(-1), /已收藏/);
+  assert.equal(JSON.stringify(savedPhrase), before);
+  fail = false; save();
+  assert.match(notices.at(-1), /已收藏/);
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0], writes[1]);
+});
 function effectContaining(context, marker) {
   let source;
   function visit(node) {

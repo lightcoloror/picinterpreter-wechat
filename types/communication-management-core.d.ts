@@ -19,7 +19,8 @@ declare module '@cboard-communication-core/repository' {
   interface CommunicationRepository {
     overwriteCommunicationHistory(entries: CommunicationHistoryEntry[]): void
     overwriteCommunicationSavedPhrases(
-      entries: CommunicationSavedPhraseEntry[]
+      entries: CommunicationSavedPhraseEntry[],
+      options?: { expectedPhrases?: CommunicationSavedPhraseEntry[] }
     ): CommunicationSavedPhraseEntry[]
     deleteCommunicationSavedPhrase(
       id: string,
@@ -39,6 +40,8 @@ declare module '@cboard-communication-core/repository' {
 }
 
 declare module '@cboard-communication-core/savedPhraseManagement' {
+  export const DEFAULT_SAVED_PHRASE_CAPACITY: number
+  export function assertSavedPhraseCapacity(entries: readonly unknown[], capacity?: number, message?: string): void
   import type {
     CommunicationSavedPhraseEntry
   } from '@cboard-communication-core/repository'
@@ -50,6 +53,11 @@ declare module '@cboard-communication-core/savedPhraseManagement' {
     item: CommunicationSavedPhraseEntry | null
     items: CommunicationSavedPhraseEntry[]
   }
+
+  export function normalizeCommunicationSavedPhraseList(
+    entries: CommunicationSavedPhraseEntry[],
+    options?: { now?: () => number; createId?: (prefix: string) => string }
+  ): CommunicationSavedPhraseEntry[]
 
   export function addCommunicationSavedPhrase(
     entries: CommunicationSavedPhraseEntry[],

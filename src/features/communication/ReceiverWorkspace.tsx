@@ -1,4 +1,7 @@
 import { repairCatalogImage } from '@cboard-communication-core/imageRepair'
+import { getLocalPictogramCandidates } from '@cboard-communication-core/pictogramSemantics'
+import { DEFAULT_BOARD_FIXTURES } from '../../fixtures/defaultBoard'
+import { verifyTaroLocalImage } from '../../platform/taroLocalImageVerification'
 import { receiverDraftContentSignature } from '@cboard-communication-core/receiverDraftPersistence'
 import { useEffect, useRef, useState } from 'react'
 import { useDidHide } from '@tarojs/taro'
@@ -19,6 +22,9 @@ import type {
 } from '@cboard-communication-core/repository'
 import {
   buildReceiverHistoryEntry,
+  buildReceiverMeaningAssessment,
+  prepareReceiverAssistedItems,
+  isReceiverPunctuation,
   type ReceiverHistoryEntry
 } from '@cboard-communication-core/receiverPipeline'
 import {
@@ -187,6 +193,14 @@ export default function ReceiverWorkspace({
   const [repairEditing, setRepairEditing] = useState(Boolean(initialState?.repairEditing || activeDraft?.repairOfRecordId))
   const [showPartnerGuidance, setShowPartnerGuidance] = useState(true)
   const displayOpeningRef = useRef(false)
+  const [assistanceRequest, setAssistanceRequest] = useState<string | null>(null)
+  const assistanceRef = useRef<string | null>(null)
+  const candidatePendingRef = useRef(false)
+  const meaning = buildReceiverMeaningAssessment(session.inputText, session.reviewItems)
+  const meaningKey = JSON.stringify([session.inputText, session.reviewItems])
+  const meaningKeyRef = useRef(meaningKey)
+  meaningKeyRef.current = meaningKey
+  useEffect(() => { assistanceRef.current = null; setAssistanceRequest(null) }, [meaningKey])
   const [replacementItemId, setReplacementItemId] = useState<string | null>(null)
   const [insertionAfterItemId, setInsertionAfterItemId] = useState<string | null>(null)
   const [notice, setNotice] = useState(
@@ -273,8 +287,12 @@ export default function ReceiverWorkspace({
     setPendingAiSuggestion(null)
     wechatSpeechPort.stop()
   }
-  useDidHide(invalidateTextAi)
-  useEffect(invalidateTextAi, [textAi.contextKey])
+  useDidHide(() => { invalidateTextAi(); assistanceRef.current = null; setAssistanceRequest(null) })
+  useEffect(() => {
+    invalidateTextAi()
+    assistanceRef.current = null
+    setAssistanceRequest(null)
+  }, [textAi.contextKey])
 
   useEffect(
     () => () => {
@@ -629,18 +647,25 @@ export default function ReceiverWorkspace({
     )
   }
 
-  const handleOpenDisplay = () => {
+  const handleOpenDisplay = (displaySession = session, assisted = false) => {
     if (displayOpeningRef.current) return
-    if (session.quality.needsReview) {
+    if (!preparationMode && !assisted && buildReceiverMeaningAssessment(displaySession.inputText, displaySession.reviewItems).requiresAssistance) {
+      assistanceRef.current = meaningKey
+      setAssistanceRequest(meaningKey)
+      wechatSpeechPort.stop()
+      return
+    }
+    if (displaySession.quality.needsReview && !assisted) {
       setNotice('请先处理标记为未匹配或低置信度的词语。')
       return
     }
 
-    const historyEntry = buildConfirmedReceiverHistory(session)
-    if (!historyEntry) {
+    const rawHistoryEntry = buildConfirmedReceiverHistory(displaySession)
+    if (!rawHistoryEntry) {
       setNotice('请先生成至少一张图片。')
       return
     }
+    const historyEntry = withReceiverRepair(rawHistoryEntry, repairSource)
 
     displayOpeningRef.current = true
     if (preparationMode) {
@@ -651,16 +676,17 @@ export default function ReceiverWorkspace({
     let saved = false
     let confirmedRecord: ReceiverDraftEntry | null = null
     try {
-      if (activeDraft && activeDraft.recordStatus === 'draft') {
-        const confirmed = onConfirmDraft(activeDraft, historyEntry)
+      const currentDraft = activeDraftRef.current
+      if (currentDraft && currentDraft.recordStatus === 'draft') {
+        const confirmed = onConfirmDraft(currentDraft, historyEntry)
         saved = Boolean(confirmed)
         if (confirmed) {
           confirmedRecord = confirmed
           setActiveDraft(confirmed)
         }
-      } else if (activeDraft && activeDraft.recordStatus === 'confirmed') {
+      } else if (currentDraft && currentDraft.recordStatus === 'confirmed') {
         saved = true
-        confirmedRecord = activeDraft
+        confirmedRecord = currentDraft
       } else {
         saved = onConfirm(historyEntry)
       }
@@ -668,24 +694,49 @@ export default function ReceiverWorkspace({
       saved = false
     }
 
-    const nextNotice =
-      saved
-        ? '已全屏展示并保存确认记录。'
-        : '全屏展示可继续使用，但本地保存失败。'
+    if (!saved) {
+      displayOpeningRef.current = false
+      setDraftSaveError('确认记录尚未保存，请重试；原内容仍保留。')
+      return
+    }
+    const nextNotice = '已保存确认记录；是否理解请由对方反馈。'
     setNotice(nextNotice)
     onOpenDisplay(
-      session.outputPreview,
-      session.inputText,
+      displaySession.outputPreview,
+      displaySession.inputText,
       confirmedRecord ? confirmedRecord.id : '',
       createReceiverWorkspaceResumeState({
-        session,
+        session: displaySession,
         segmentationDraft,
         activeDraft: confirmedRecord || activeDraft,
         learnFromCorrections,
         notice: nextNotice,
         repairRequested, repairSource, repairEditing
-      })
+      }),
+      assisted ? { autoPlay: false } : undefined
     )
+  }
+
+  const cancelAssistance = () => { assistanceRef.current = null; setAssistanceRequest(null) }
+  const confirmAssistance = () => {
+    if (assistanceRef.current !== meaningKeyRef.current || displayOpeningRef.current) return
+    const next = replaceReceiverReviewItems(session, prepareReceiverAssistedItems(session.reviewItems))
+    try {
+      const entry = withReceiverRepair(buildReceiverHistoryEntry(next.inputText, next.reviewItems), repairSource)
+      const current = activeDraftRef.current
+      // Reopening unchanged, confirmed content is a display action, not a new
+      // repair. Compare the ordered snapshots, including concrete identities.
+      const sameConfirmed = current?.recordStatus === 'confirmed' &&
+        (current.repairOfRecordId || '') === (entry.repairOfRecordId || '') &&
+        receiverDraftContentSignature(current) === receiverDraftContentSignature(entry)
+      const saved = sameConfirmed ? current : current?.recordStatus === 'draft'
+        ? onUpdateDraft(current, entry) : onCreateDraft(entry)
+      if (!saved) throw new Error('draft unavailable')
+      setActiveDraft(saved)
+      setSession(next)
+      cancelAssistance()
+      handleOpenDisplay(next, true)
+    } catch (_) { setDraftSaveError('辅助展示草稿未保存，请重试；原内容仍保留。') }
   }
 
   const startRepair = (kind: 'text' | 'pictures') => {
@@ -749,7 +800,8 @@ export default function ReceiverWorkspace({
     action: string,
     itemId: string,
     nextSession: typeof session,
-    holdOnFailure = false
+    holdOnFailure = false,
+    learn = learnFromCorrections
   ) => {
     if (repairRequested) setRepairEditing(true)
     if (action === RECEIVER_CORRECTION_ACTIONS.resegment) {
@@ -783,7 +835,7 @@ export default function ReceiverWorkspace({
           session.reviewItems,
           nextSession.reviewItems,
           itemId,
-          { isUsedForLearning: learnFromCorrections }
+          { isUsedForLearning: learn }
         )
       )
     } catch (error) {
@@ -1393,28 +1445,44 @@ export default function ReceiverWorkspace({
           </View>
           <View
             className={`quality-banner ${
-              session.quality.needsReview
+              session.quality.needsReview || meaning.requiresAssistance
                 ? 'quality-banner--review'
                 : 'quality-banner--ready'
             }`}
           >
             <Text className='quality-banner__count'>
-              图片 {session.quality.imageCount}/{session.quality.totalCount}
+              图片 {meaning.pictureCount}/{meaning.meaningfulCount}（不含标点；不是理解程度）
             </Text>
             <View>
               <Text className='quality-banner__title'>
-                {session.quality.needsReview ? '建议逐项确认' : '表达序列可以使用'}
+                {meaning.requiresAssistance ? '尚需伙伴解释' : '请复核图片，再核对对方理解'}
               </Text>
               <Text className='quality-banner__hint'>
                 {[
                   session.quality.textOnlyCount > 0 ? `保留文字 ${session.quality.textOnlyCount} 项` : '',
                   session.quality.missingCount > 0
                     ? `${session.quality.missingCount} 项待处理`
-                    : session.quality.textOnlyCount > 0 ? '含文字，可以展示' : '所有词语均已有对应图片'
+                    : session.quality.textOnlyCount > 0 ? '文字仅供伙伴核对原话' : '已找到图片，不代表对方已经理解'
                 ].filter(Boolean).join(' · ')}
               </Text>
             </View>
           </View>
+
+          {meaning.requiresAssistance && <View id='receiver-meaning-gaps'>
+            <Text>尚需解释：{meaning.unresolvedMeaningItems.map(item => `${item.token}（${item.explanation || item.role}）`).join('、')}</Text>
+            <Button onClick={() => { const item = session.reviewItems.find(row => !row.tile || row.tile.textOnly); if (item) setReplacementItemId(item.id) }}>选图或补图</Button>
+            <Button onClick={() => { wechatSpeechPort.stop(); if (activeDraftRef.current?.recordStatus === 'confirmed') { setRepairSource(activeDraftRef.current); setRepairRequested(true) } setNotice(`原句参照：${session.inputText}。请在上方手动改说，一次说一个意思。`) }}>我换个说法</Button>
+            {!preparationMode && <Button onClick={() => handleOpenDisplay()}>由伙伴辅助展示</Button>}
+            <Button onClick={() => setShowPartnerGuidance(!showPartnerGuidance)}>{showPartnerGuidance ? '收起伙伴提示' : '伙伴提示'}</Button>
+            {showPartnerGuidance && <Text>{RECEIVER_PARTNER_GUIDANCE}</Text>}
+          </View>}
+          {assistanceRequest && <View id='receiver-assistance-confirm' role='dialog'>
+            <Text>以下意思尚需解释：{meaning.unresolvedMeaningItems.map(item => item.token).join('、')}。保留文字不代表对方已理解。</Text>
+            <Text>原句：{session.inputText}</Text>
+            {draftSaveError && <Text>{draftSaveError}</Text>}
+            <Button onClick={cancelAssistance}>返回复核</Button>
+            <Button onClick={confirmAssistance}>我会辅助解释，继续展示</Button>
+          </View>}
 
           <View className='review-list'>
             {session.reviewItems.map((item, index) => (
@@ -1426,7 +1494,7 @@ export default function ReceiverWorkspace({
                   className='review-row__symbol'
                   id={`review-pictogram-${item.tile ? item.tile.id : 'missing'}`}
                 >
-                  {item.tile ? (
+                  {item.tile?.textOnly ? <Text>{item.token} · {isReceiverPunctuation(item.token) ? '原文标点' : '文字参照，仍需解释'}</Text> : item.tile ? (
                     <PictogramImage localOnly
                       className='review-row__image'
                       src={item.tile.tile.image}
@@ -1450,6 +1518,22 @@ export default function ReceiverWorkspace({
                   </Text>
                 </View>
                 <View className='review-row__actions'>
+                  {!item.personalReference && getLocalPictogramCandidates(item.token, receiverCatalog, getReceiverReplacementCatalog(DEFAULT_BOARD_FIXTURES)).map(candidate => (
+                    <Button key={candidate.sourceId} onClick={async () => {
+                      if (candidatePendingRef.current) return
+                      candidatePendingRef.current = true
+                      const key = meaningKeyRef.current, generation = aiGenerationRef.current
+                      try {
+                        const result = await verifyTaroLocalImage(candidate.item.tile.image)
+                        if (key !== meaningKeyRef.current || generation !== aiGenerationRef.current) return
+                        if (result.status !== 'available') { setNotice('候选图片尚未核验可用，请重试或使用已有图片修复入口。'); return }
+                        persistReceiverEdit(RECEIVER_CORRECTION_ACTIONS.replace, item.id, replaceReceiverItem(session, item.id, candidate.item), true, false)
+                      } finally { candidatePendingRef.current = false }
+                    }}>
+                      <PictogramImage localOnly src={candidate.item.tile.image} label={candidate.item.displayLabel} />
+                      {candidate.item.displayLabel} · {({ equivalent: '等义候选', narrower: '更具体', broader: '较宽泛', related: '相关' } as Record<string, string>)[candidate.relation]} · {candidate.hint}
+                    </Button>
+                  ))}
                   {item.tile && !item.tile.textOnly && <ImageRepairControls
                     tile={item.tile.tile}
                     operationKey={JSON.stringify([activeDraft?.id, session.inputText, index, session.reviewItems])}
@@ -1678,14 +1762,14 @@ export default function ReceiverWorkspace({
             {session.outputPreview.length ? (
               session.outputPreview.map((item, index) => (
                 <View className='receiver-preview__item' key={`${item.id}-${index}`}>
-                  <PictogramImage localOnly
+                  {item.textOnly ? <Text>{isReceiverPunctuation(item.label) ? '原文标点' : '文字参照，尚未图示'}</Text> : <PictogramImage localOnly
                     className='receiver-preview__image'
                     src={item.image}
                     label={item.label}
                     mediaType={item.mediaType}
                     video={item.video}
                     videoAutoplay={item.mediaType === 'video'}
-                  />
+                  />}
                   <Text className='receiver-preview__label'>{item.label}</Text>
                 </View>
               ))
@@ -1700,8 +1784,8 @@ export default function ReceiverWorkspace({
               action={preparationMode ? PATIENT_ACTION_IDS.save : PATIENT_ACTION_IDS.fullscreen}
               id='receiver-open-display-button'
               className='button button--primary'
-              disabled={!session.outputPreview.length || session.quality.needsReview}
-              onClick={handleOpenDisplay}
+              disabled={preparationMode ? !session.outputPreview.length || session.quality.needsReview : !session.reviewItems.length}
+              onClick={() => handleOpenDisplay()}
               label={preparationMode ? preparationSaveLabel : '全屏'}
               ariaLabel={preparationMode ? preparationSaveLabel : '全屏展示并保存已确认图片'}
             />

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useDidHide, useDidShow } from '@tarojs/taro'
 import { buildReceiverReading } from '@cboard-communication-core/receiverReading'
 import type { ReceiverHistoryEntry } from '@cboard-communication-core/receiverPipeline'
+import { buildReceiverMeaningAssessment, isReceiverPunctuation } from '@cboard-communication-core/receiverPipeline'
 import { ScrollView, Text, View } from '@tarojs/components'
 import type { CommunicationOutputItem } from '@cboard-communication-core/symbolMatching'
 import {
@@ -219,18 +220,20 @@ export default function ReceiverDisplayPage({
       >
         {visibleItems.map((item, index) => (
           <View className='receiver-display__card' key={`${item.id}-${index}`}>
-            <PictogramImage
+            {item.textOnly ? <Text>{isReceiverPunctuation(item.label) ? '原文标点' : '尚未图示，请伙伴解释'}</Text> : <PictogramImage localOnly
               className='receiver-display__image'
               src={item.image}
               label={item.label}
               mediaType={item.mediaType}
               video={item.video}
               videoAutoplay={item.mediaType === 'video'}
-            />
+            />}
             <Text className='receiver-display__label'>{item.label}</Text>
           </View>
         ))}
       </ScrollView>
+      {buildReceiverMeaningAssessment(speechText, items.map(item => ({ id: item.id, token: item.label, matchType: 'manual', tile: { ...item, textOnly: item.textOnly, tile: item } }))).requiresAssistance &&
+        <Text>文字仅供伙伴核对原话，请辅助解释并等待对方回应，不代表已经理解。</Text>}
 
       {attributedItems.length > 0 && (
         <View

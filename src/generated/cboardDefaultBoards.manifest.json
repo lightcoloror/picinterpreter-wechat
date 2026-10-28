@@ -1,12 +1,12 @@
 {
   "version": 1,
   "source": "cboard/src/api/boards.json#advanced + zh-CN.json + zh-CN.aac-review.json",
-  "boardsSha256": "88e66f55db0bef3d1275f58b4587d1124f523fa706be156c33f7ff56d44dadd5",
+  "boardsSha256": "47029765de4c844a5b09c77637f1ce247f4ae29ac9c22dbea51f26990d14974d",
   "translationsSha256": "b1b724ab2228171a742c82006456d6ca795e0f7b2b154a9e722fe9e2f6608242",
   "reviewedTranslationsSha256": "33d5ed57c563f16d9f9fdf8f83b49b5e4e4a38fac30a54e512c3218b3e06ea94",
   "boardCount": 46,
-  "tileCount": 892,
-  "imageCount": 818,
+  "tileCount": 896,
+  "imageCount": 821,
   "retainedImages": [
     "5083f4d4500e0f76.png"
   ],

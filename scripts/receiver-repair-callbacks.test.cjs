@@ -15,6 +15,55 @@ function extract(name, context) {
   vm.runInNewContext(ts.transpileModule('module.exports = ' + source, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, box);
   return box.module.exports;
 }
+
+test('assistance is cancelled or invalidated by content change; write failure does not present; retry and double click present once', () => {
+  let fail = true, writes = 0, shown = 0;
+  const notices = [], ref = { current: 'current-content' }, draft = { current: { id: 'draft', recordStatus: 'draft' } };
+  const context = { assistanceRef: ref, meaningKeyRef: { current: 'current-content' }, displayOpeningRef: { current: false },
+    session: { inputText: '你要不要喝水？', reviewItems: [{token:'要不要', tile:null}] }, repairSource: null, activeDraftRef: draft,
+    prepareReceiverAssistedItems: items => items, replaceReceiverReviewItems: session => session,
+    buildReceiverHistoryEntry: text => ({ inputText:text }), withReceiverRepair: value => value,
+    onUpdateDraft: () => { writes++; return fail ? null : draft.current; },
+    onCreateDraft: () => { throw Error('must use existing draft'); },
+    setActiveDraft: value => { draft.current=value; }, setSession() {}, setAssistanceRequest() {},
+    setDraftSaveError: value => notices.push(value),
+    handleOpenDisplay: (_session, assisted) => { assert.equal(assisted,true); shown++; context.displayOpeningRef.current=true; }
+  };
+  context.cancelAssistance=extract('cancelAssistance',context);
+  const confirm=extract('confirmAssistance',context);
+  context.cancelAssistance(); confirm(); assert.equal(writes,0);
+  ref.current='old-content'; confirm(); assert.equal(writes,0);
+  ref.current='current-content'; confirm(); assert.equal(shown,0); assert.match(notices[0],/未保存/);
+  fail=false; confirm(); confirm(); assert.equal(writes,2); assert.equal(shown,1);
+});
+for (const change of ['none', 'text', 'person', 'repair-source']) test(`confirmed assistance redisplay: ${change}`, () => {
+  const current = { id: 'confirmed', recordStatus: 'confirmed', inputText: '合成林安喝水',
+    repairOfRecordId: 'original', output: [{ id: 'same-card', personId: 'synthetic-a' }] };
+  const entry = JSON.parse(JSON.stringify(current));
+  if (change === 'text') entry.inputText = '合成林安不喝水';
+  if (change === 'person') entry.output[0].personId = 'synthetic-b';
+  if (change === 'repair-source') entry.repairOfRecordId = 'other-original';
+  let created = 0, shown = 0;
+  const ref = { current }, opening = { current: false };
+  const context = { assistanceRef: { current: 'content' }, meaningKeyRef: { current: 'content' }, displayOpeningRef: opening,
+    session: { inputText: entry.inputText, reviewItems: [] }, repairSource: null, activeDraftRef: ref,
+    prepareReceiverAssistedItems: items => items, replaceReceiverReviewItems: session => session,
+    buildReceiverHistoryEntry: () => entry, withReceiverRepair: value => value,
+    receiverDraftContentSignature: value => JSON.stringify([value.inputText, value.output]),
+    onUpdateDraft: () => { throw Error('confirmed record must not be edited'); },
+    onCreateDraft: value => { created++; return { ...value, id: 'new-draft', recordStatus: 'draft' }; },
+    setActiveDraft: value => { ref.current = value; }, setSession() {}, cancelAssistance() {},
+    setDraftSaveError: value => { throw Error(value); },
+    handleOpenDisplay: (_session, assisted) => { assert.equal(assisted, true); shown++; opening.current = true; }
+  };
+  const snapshot = JSON.stringify(current), confirm = extract('confirmAssistance', context);
+  confirm(); confirm();
+  assert.equal(created, change === 'none' ? 0 : 1);
+  assert.equal(shown, 1);
+  assert.equal(ref.current.id, change === 'none' ? 'confirmed' : 'new-draft');
+  assert.equal(JSON.stringify(current), snapshot);
+});
+
 test('repeated repair starts use one saved draft and invalidate prior AI work', () => {
   let creates = 0, editing = false, stopped = 0;
   const ref = { current: { id: 'source', recordStatus: 'confirmed' } };

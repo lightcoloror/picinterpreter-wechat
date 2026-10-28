@@ -50,7 +50,7 @@ describe('CBoard default pictogram attribution', () => {
     expect(providerCounts).toEqual({
       arasaac: 63,
       cboard: 17,
-      mulberry: 812
+      mulberry: 816
     })
     expect(
       DEFAULT_BOARD_TILES.find(

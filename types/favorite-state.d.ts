@@ -6,3 +6,11 @@ declare module '@cboard-communication-core/favoriteState' {
     prepareFavoriteCommit?(before: FavoriteState, after: FavoriteState): any
   }): { read(): FavoriteState; commit(expected: FavoriteState, changes: Partial<FavoriteState>): FavoriteState }
 }
+
+declare module '@cboard-communication-core/repository' {
+  import type { FavoriteState } from '@cboard-communication-core/favoriteState'
+  export interface CommunicationRepository {
+    readFavoriteState(): FavoriteState
+    commitFavoriteState(expected: FavoriteState, changes: Partial<FavoriteState>): FavoriteState
+  }
+}

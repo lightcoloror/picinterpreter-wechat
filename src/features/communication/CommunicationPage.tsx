@@ -28,6 +28,7 @@ import type {
   CommunicationSavedPhraseEntry
 } from '@cboard-communication-core/repository'
 import {
+  addCommunicationSavedPhrase,
   markCommunicationSavedPhraseUsed
 } from '@cboard-communication-core/savedPhraseManagement'
 import {
@@ -497,15 +498,17 @@ function CommunicationPageWorkspace() {
   }
 
   const savePhrase = (entry: ExpressionSavedPhraseEntry) => {
-    try {
-      repositoryRef.current.saveCommunicationPhrase(entry)
-      setSavedPhraseItems(
-        repositoryRef.current.loadCommunicationSavedPhrases()
-      )
-      return true
-    } catch (error) {
-      return false
-    }
+    // The workspace presents the repository's precise capacity/persistence
+    // failure and keeps the expression available for an explicit retry.
+    const repository = repositoryRef.current
+    const current = repository.loadCommunicationSavedPhrases()
+    const result = addCommunicationSavedPhrase(current, { ...entry })
+    if (!result.item) throw new Error('这句话没有可收藏的内容。')
+    if (result.changed) repository.overwriteCommunicationSavedPhrases(result.items, { expectedPhrases: current })
+    setSavedPhraseItems(
+      repositoryRef.current.loadCommunicationSavedPhrases()
+    )
+    return true
   }
 
   const updatePreferences = (value: CommunicationPreferences) => {

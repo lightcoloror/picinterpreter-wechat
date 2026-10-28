@@ -763,11 +763,12 @@ export default function ExpressionWorkspace({
       return
     }
 
-    setNotice(
-      onSavePhrase(savedPhrase)
-        ? '已收藏为常用语，下次可以一键使用。'
-        : '常用语保存失败，请稍后再试。'
-    )
+    try {
+      if (!onSavePhrase(savedPhrase)) throw new Error('本次收藏尚未保存。')
+      setNotice('已收藏为常用语，下次可以一键使用。')
+    } catch (error) {
+      setNotice(`${(error as Error).message || '常用语保存失败。'} 当前表达已保留，请整理后或稍后重试收藏。`)
+    }
   }
 
   const handleReusePhrase = (item: CommunicationSavedPhraseEntry) => {

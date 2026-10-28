@@ -22,11 +22,19 @@ function load(): CommunicationPreferences {
 function save(value: CommunicationPreferences) {
   const before = load()
   if (currentCareContext()?.profileId) {
-    const overrides = Taro.getStorageSync(careScopedKey('care-display-overrides')) || {}
+    const overrides = { ...(Taro.getStorageSync(careScopedKey('care-display-overrides')) || {}) }
     if (value.fontSize !== before.fontSize) overrides.fontSize = true
     if (value.gridColumns !== before.gridColumns) overrides.gridColumns = true
     Taro.setStorageSync(careScopedKey('care-display-overrides'), overrides)
-    if (value.speechRate !== before.speechRate) markCareLocalChange('speechRate', value.speechRate)
+    if (JSON.stringify(Taro.getStorageSync(careScopedKey('care-display-overrides'))) !== JSON.stringify(overrides)) {
+      throw new Error('显示设置尚未核对保存，请重试。')
+    }
+    if (value.speechRate !== before.speechRate) {
+      markCareLocalChange('speechRate', value.speechRate)
+      if (Taro.getStorageSync(careScopedKey('care-pending-speechRate')) !== JSON.stringify(value.speechRate)) {
+        throw new Error('语速设置尚未核对保存，请重试。')
+      }
+    }
   }
   return deviceStore.save(value)
 }

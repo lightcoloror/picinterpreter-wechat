@@ -6,6 +6,28 @@ import {
 } from './communicationPreferencesStore'
 
 describe('communication preferences storage', () => {
+  test.each(['false', 'silent', 'readback', 'receipt'])('rejects %s save failure and verifies retry', mode => {
+    const values = new Map<string, unknown>()
+    let fail = ''
+    const store = createCommunicationPreferencesStore({
+      getStorageSync: key => {
+        if (fail === 'readback') { fail = ''; throw new Error('read') }
+        return values.get(key)
+      },
+      setStorageSync: (key, value) => {
+        if (fail === 'false') { fail = ''; return false }
+        if (fail === 'silent') { fail = ''; return }
+        values.set(key, value)
+        if (fail === 'receipt') { fail = ''; throw new Error('receipt') }
+      }
+    })
+    store.update({ fontSize: 'large' })
+    const next = { ...store.load(), fontSize: 'extra-large' as const }
+    fail = mode
+    expect(() => store.save(next)).toThrow()
+    expect(store.save(next).fontSize).toBe('extra-large')
+    expect(store.load().fontSize).toBe('extra-large')
+  })
   test('recovers invalid storage and persists normalized updates', () => {
     const values = new Map<string, unknown>([
       [COMMUNICATION_PREFERENCES_STORAGE_KEY, '{broken']

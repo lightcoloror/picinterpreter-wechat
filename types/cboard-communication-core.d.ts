@@ -112,12 +112,14 @@ declare module '@cboard-communication-core/dto' {
       columns: number
       rows: number
       tileIds: string[]
+      cells?: Array<string | null>
     }
     tiles: TileDTO[]
   }
 
   export function createBoardDTO(source: unknown, options?: unknown): BoardDTO
   export function getBoardDTOTilesInDisplayOrder(board: BoardDTO): TileDTO[]
+  export function getBoardDTOGridSlots(board: BoardDTO): Array<TileDTO | null>
 }
 
 declare module '@cboard-communication-core/expressionPipeline' {

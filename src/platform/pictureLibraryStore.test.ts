@@ -40,6 +40,20 @@ function createBoard(id: string, name = id): BoardDTO {
 }
 
 describe('picture library store', () => {
+  test('preserves sparse grid coordinates through verified save and a new store instance', () => {
+    const values = new Map<string, unknown>()
+    const storage = {
+      getStorageSync: (key: string) => values.get(key),
+      setStorageSync: (key: string, value: string) => { values.set(key, value) },
+      removeStorageSync: (key: string) => { values.delete(key) }
+    }
+    const board = createBoard('synthetic-sparse')
+    board.layout = { columns: 3, rows: 2, tileIds: ['tile'], cells: [null, null, 'tile', null, null, null] }
+    createPictureLibraryStore(storage, []).save([board])
+    const restored = createPictureLibraryStore(storage, []).load()[0]
+    expect(restored.layout).toEqual(board.layout)
+    expect(restored.tiles[0].id).toBe('tile')
+  })
   test('falls back safely and restores a normalized full library', () => {
     const values = new Map<string, unknown>()
     const store = createPictureLibraryStore(

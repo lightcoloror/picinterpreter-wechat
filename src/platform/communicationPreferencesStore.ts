@@ -9,7 +9,7 @@ export const COMMUNICATION_PREFERENCES_STORAGE_KEY =
 
 interface PreferencesStorage {
   getStorageSync(key: string): unknown
-  setStorageSync(key: string, value: string): void
+  setStorageSync(key: string, value: string): unknown
 }
 
 export function createCommunicationPreferencesStore(storage: PreferencesStorage) {
@@ -27,10 +27,15 @@ export function createCommunicationPreferencesStore(storage: PreferencesStorage)
 
   const save = (value: CommunicationPreferences) => {
     const normalized = normalizeCommunicationPreferences(value)
-    storage.setStorageSync(
+    const serialized = JSON.stringify(normalized)
+    const result = storage.setStorageSync(
       COMMUNICATION_PREFERENCES_STORAGE_KEY,
-      JSON.stringify(normalized)
+      serialized
     )
+    if (result === false) throw new Error('设置未保存到本机，请保留修改并重试。')
+    if (storage.getStorageSync(COMMUNICATION_PREFERENCES_STORAGE_KEY) !== serialized) {
+      throw new Error('无法核对本机设置，请保留修改并重试。')
+    }
     return normalized
   }
 

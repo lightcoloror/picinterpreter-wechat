@@ -743,6 +743,7 @@ describe("picture library backup service", () => {
           columns: 1,
           rows: 1,
           tileIds: ["water"],
+          cells: ["water"],
         },
       }),
     );

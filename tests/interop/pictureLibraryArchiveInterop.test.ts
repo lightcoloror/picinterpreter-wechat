@@ -288,7 +288,7 @@ describe("PictureLibraryArchive v1 Web/WeChat interoperability", () => {
       expect.objectContaining({
         name: "Web 图库",
         category: "needs",
-        layout: { columns: 1, rows: 1, tileIds: ["water"] },
+        layout: { columns: 1, rows: 1, tileIds: ["water"], cells: ["water"] },
       }),
     );
     expect(harness.getBoards()[0].tiles[0]).toEqual(

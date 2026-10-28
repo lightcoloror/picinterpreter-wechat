@@ -2,6 +2,7 @@ import type { Dispatch } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, ScrollView, Text, View } from '@tarojs/components'
 import { useDidHide, useDidShow } from '@tarojs/taro'
+import { getBoardDTOGridSlots } from '@cboard-communication-core/dto'
 import {
   CANDIDATE_FEEDBACK,
   normalizeExpressionCandidates,
@@ -231,7 +232,8 @@ export default function ExpressionWorkspace({
   const previousShareSignatureRef = useRef(shareSignature)
   shareSignatureRef.current = shareSignature
   const activeBoard = getActiveNavigationBoard(boards, boardNavigation)
-  const visibleTiles = sortPictogramsForDisplay(
+  const fixedGrid = Array.isArray(activeBoard?.layout.cells)
+  const visibleTiles = fixedGrid && activeBoard ? getBoardDTOGridSlots(activeBoard) : sortPictogramsForDisplay(
     getVisibleBoardTiles(boards, boardNavigation),
     pictogramSortMode,
     pictogramOrdering,
@@ -1144,7 +1146,7 @@ export default function ExpressionWorkspace({
             {activeBoard ? activeBoard.name : '默认图板'}
           </Text>
           <Text className='board-section-heading__hint'>
-            点分类进入子板，点图片加入表达，可重复选择
+            {fixedGrid ? '固定图板保留原列数与空位；点图片加入表达' : '点分类进入子板，点图片加入表达，可重复选择'}
           </Text>
         </View>
 
@@ -1154,8 +1156,8 @@ export default function ExpressionWorkspace({
           onChange={setBoardNavigation}
         />
 
-        <View className='tile-grid'>
-          {visibleTiles.map(tile => (
+        <View className='tile-grid' style={fixedGrid ? { gridTemplateColumns: `repeat(${activeBoard!.layout.columns}, minmax(0, 1fr))` } : undefined}>
+          {visibleTiles.map((tile, index) => tile ? (
             <Button
               id={`expression-tile-${tile.id}`}
               className={`tile-button ${
@@ -1197,7 +1199,7 @@ export default function ExpressionWorkspace({
               )}
               <Text className='tile-button__label'>{tile.label}</Text>
             </Button>
-          ))}
+          ) : <View key={`empty-${index}`} className='tile-grid__empty' aria-hidden style={{ minHeight: '120px' }} />)}
         </View>
       </View>
 

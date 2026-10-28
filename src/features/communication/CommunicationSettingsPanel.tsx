@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Taro from '@tarojs/taro'
 import { Button, Picker, Text, View } from '@tarojs/components'
 import type {
   CommunicationCandidateAutoplayDelay,
@@ -133,7 +134,7 @@ const CANDIDATE_AUTOPLAY_LABELS: Record<
 
 export default function CommunicationSettingsPanel({
   boards,
-  value,
+  value: savedValue,
   pictogramOrdering,
   accountConfigured,
   accountSession,
@@ -175,8 +176,25 @@ export default function CommunicationSettingsPanel({
   onOpenPictureLibraryBackup,
   onReplayOnboarding
 }: CommunicationSettingsPanelProps) {
-  const patch = (changes: Partial<CommunicationPreferences>) =>
-    onChange({ ...value, ...changes })
+  const [pendingValue, setPendingValue] = useState<CommunicationPreferences | null>(null)
+  const [saveNotice, setSaveNotice] = useState('')
+  const [saveFailed, setSaveFailed] = useState(false)
+  const value = pendingValue || savedValue
+  const save = (next: CommunicationPreferences) => {
+    setPendingValue(next)
+    setSaveNotice('正在核对本机保存…')
+    setSaveFailed(false)
+    try {
+      onChange(next)
+      setPendingValue(null)
+      setSaveNotice('已保存到本机；这不表示已同步。')
+    } catch (_) {
+      setSaveFailed(true)
+      setSaveNotice('设置尚未核对保存，修改保留在此页面；离开后可能仍为上次设置。')
+      void Taro.pageScrollTo({ selector: '#preferences-save-status', duration: 0 }).catch(() => {})
+    }
+  }
+  const patch = (changes: Partial<CommunicationPreferences>) => save({ ...value, ...changes })
   const [orderingBoardId, setOrderingBoardId] = useState(
     boards.length ? boards[0].id : ''
   )
@@ -212,6 +230,10 @@ export default function CommunicationSettingsPanel({
         </View>
       </View>
 
+      <View role='status' id='preferences-save-status'>
+        <Text>{saveNotice}</Text>
+        {saveFailed && <Button onClick={() => pendingValue && save(pendingValue)}>重试保存设置</Button>}
+      </View>
       <AccountSyncPanel
         configured={accountConfigured}
         session={accountSession}
@@ -644,7 +666,7 @@ export default function CommunicationSettingsPanel({
               <Button
                 className={hidden ? 'review-action settings-option--hidden' : 'review-action'}
                 key={board.id}
-                onClick={() => onChange(toggleCommunicationBoardVisibility(value, board.id))}
+                onClick={() => save(toggleCommunicationBoardVisibility(value, board.id))}
               >{hidden ? `恢复 ${board.name}` : `隐藏 ${board.name}`}</Button>
             )
           })}

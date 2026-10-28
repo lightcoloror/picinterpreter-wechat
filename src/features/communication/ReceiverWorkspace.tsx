@@ -287,7 +287,27 @@ export default function ReceiverWorkspace({
     setPendingAiSuggestion(null)
     wechatSpeechPort.stop()
   }
-  useDidHide(() => { invalidateTextAi(); assistanceRef.current = null; setAssistanceRequest(null) })
+  const cancelHiddenRecognition = () => {
+    if (isListening || isDialectNormalizing || dialectAudioPhase !== 'idle') {
+      setNotice('录音或语音处理已取消；返回后请主动重新开始。')
+    }
+    recognitionGenerationRef.current += 1
+    dialectGenerationRef.current += 1
+    dialectAudioGenerationRef.current += 1
+    clearRecognitionActivity()
+    wechatRecognitionPort.cancel()
+    taroDialectAudioRecognitionPort.cancel()
+    setIsListening(false)
+    setIsDialectNormalizing(false)
+    setDialectAudioConsent(false)
+    setDialectAudioPhase('idle')
+  }
+  useDidHide(() => {
+    invalidateTextAi()
+    cancelHiddenRecognition()
+    assistanceRef.current = null
+    setAssistanceRequest(null)
+  })
   useEffect(() => {
     invalidateTextAi()
     assistanceRef.current = null

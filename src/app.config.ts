@@ -35,6 +35,8 @@ export default defineAppConfig({
     }
   ],
   lazyCodeLoading: 'requiredComponents',
+  // Page orientation covers phones; iPad rotation requires this app-level flag.
+  resizable: true,
   permission: {
     'scope.record': {
       desc: '用于用户主动语音输入和为个人图卡录制声音'

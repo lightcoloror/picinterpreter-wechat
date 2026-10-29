@@ -41,6 +41,20 @@ test('a missing favorite snapshot cannot erase existing local favorites', async 
   expect(hasCareFavoriteProjection({ cursor: -1, resources: { 'personalFavorite:a': deletion } }, 'personalFavorite')).toBe(true)
 })
 
+test('future schema rejects background sync before engine/cache initialization or local projection', async () => {
+  h.values.clear(); h.engine.init.mockClear(); h.engine.sync.mockClear(); h.saveSelection.mockClear()
+  const read = vi.fn(), commit = vi.fn()
+  h.favoriteStore = { read, commit }
+  h.values.set(h.scoped(COMMUNICATION_STORAGE_KEYS.schema), JSON.stringify({ schemaVersion: 999 }))
+  const before = [...h.values]
+  const { synchronizeCareWorkspace } = await import('./taroCareWorkspace')
+  await expect(synchronizeCareWorkspace({ automatic: true })).rejects.toMatchObject({ code: 'COMMUNICATION_SCHEMA_FUTURE' })
+  expect(h.engine.init).not.toHaveBeenCalled(); expect(h.engine.sync).not.toHaveBeenCalled()
+  expect(read).not.toHaveBeenCalled(); expect(commit).not.toHaveBeenCalled(); expect(h.saveSelection).not.toHaveBeenCalled()
+  expect([...h.values]).toEqual(before)
+  h.favoriteStore = null; h.values.clear()
+})
+
 test('projection refreshes only the currently selected account/profile grant and lock state', async () => {
   h.values.clear()
   h.saveSelection.mockClear()

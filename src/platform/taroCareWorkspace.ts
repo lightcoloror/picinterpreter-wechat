@@ -1,4 +1,6 @@
 import { createTaroFavoriteStateStore } from './taroFavoriteLocalFileStorage'
+import { assertCommunicationRepositorySchemaReadable } from '@cboard-communication-core/repository'
+import { createWechatKeyValueStore } from '@cboard-communication-core/adapters/wechatStorage'
 import Taro from '@tarojs/taro'
 import { useEffect, useRef } from 'react'
 import { createCareSync } from '@cboard-communication-core/careSync'
@@ -25,6 +27,12 @@ import { assertCareAiRequestScope } from './taroCommunicationAiPort'
 let active: { key: string; engine: ReturnType<typeof createCareSync> } | null = null
 let pending: Promise<void> | null = null
 let stopWatch: (() => void) | null = null
+function assertCurrentSchemaReadable() {
+  assertCommunicationRepositorySchemaReadable(createWechatKeyValueStore({
+    getStorageSync: key => Taro.getStorageSync(careScopedKey(key)),
+    setStorageSync: () => { throw new Error('Schema preflight is read-only') }
+  }))
+}
 export function hasCareFavoriteProjection(
   snapshot: { cursor?: number; resources: Record<string, { kind?: string }> },
   kind: string
@@ -54,6 +62,7 @@ function project(
   engine: ReturnType<typeof createCareSync>,
   expectedContext: NonNullable<ReturnType<typeof currentCareContext>>
 ) {
+  assertCurrentSchemaReadable()
   const snapshot = engine.view()
   Taro.setStorageSync(careScopedKey('care-locked'), snapshot.locked)
   const current = currentCareContext()
@@ -126,6 +135,7 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
   }
   const context = currentCareContext()
   if (!context?.profileId) return
+  assertCurrentSchemaReadable()
   const key = careScopedKey('workspace')
   const scoped = (suffix: string) => key.slice(0, -'workspace'.length) + suffix
   pending = (async () => {

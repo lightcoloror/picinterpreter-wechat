@@ -81,8 +81,9 @@ const readExpressionStorageError = () => {
     repository.loadCommunicationHistory()
     repository.loadExpressionDraft()
     return ''
-  } catch (_) {
-    return '本机表达草稿暂时无法读取。原数据已保留，请重试；不会改用旧草稿。'
+  } catch (error) {
+    return (error as { code?: string })?.code === 'COMMUNICATION_SCHEMA_FUTURE' && error instanceof Error
+      ? error.message : '本机表达草稿暂时无法读取。原数据已保留，请重试；不会改用旧草稿。'
   }
 }
 

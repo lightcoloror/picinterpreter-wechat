@@ -1,41 +1,20 @@
 import Taro from '@tarojs/taro'
 
-import type { CommunicationPreferences } from '@cboard-communication-core/communicationPreferences'
-import { createCommunicationPreferencesStore } from './communicationPreferencesStore'
-import { careScopedKey, currentCareContext, markCareLocalChange } from './taroCareContext'
+import { createCareDevicePreferencesStore } from '@cboard-communication-core/careDevicePreferences'
+import { careScopedKey, currentCareContext } from './taroCareContext'
 
-const deviceStore =
-  createCommunicationPreferencesStore({
-    getStorageSync: key => Taro.getStorageSync(careScopedKey(key)),
-    setStorageSync: (key, value) => Taro.setStorageSync(careScopedKey(key), value)
-  })
-function load(): CommunicationPreferences {
-  const device = deviceStore.load()
-  if (!currentCareContext()?.profileId) return device
-  const defaults = Taro.getStorageSync(careScopedKey('care-patient-defaults')) || {}
-  const overrides = Taro.getStorageSync(careScopedKey('care-display-overrides')) || {}
-  return { ...device,
-    speechRate: Taro.getStorageSync(careScopedKey('care-pending-speechRate')) ? device.speechRate : defaults.speechRate ?? device.speechRate,
-    fontSize: overrides.fontSize ? device.fontSize : defaults.fontSize ?? device.fontSize,
-    gridColumns: overrides.gridColumns ? device.gridColumns : defaults.cardDensity ?? device.gridColumns }
-}
-function save(value: CommunicationPreferences) {
-  const before = load()
-  if (currentCareContext()?.profileId) {
-    const overrides = { ...(Taro.getStorageSync(careScopedKey('care-display-overrides')) || {}) }
-    if (value.fontSize !== before.fontSize) overrides.fontSize = true
-    if (value.gridColumns !== before.gridColumns) overrides.gridColumns = true
-    Taro.setStorageSync(careScopedKey('care-display-overrides'), overrides)
-    if (JSON.stringify(Taro.getStorageSync(careScopedKey('care-display-overrides'))) !== JSON.stringify(overrides)) {
-      throw new Error('显示设置尚未核对保存，请重试。')
-    }
-    if (value.speechRate !== before.speechRate) {
-      markCareLocalChange('speechRate', value.speechRate)
-      if (Taro.getStorageSync(careScopedKey('care-pending-speechRate')) !== JSON.stringify(value.speechRate)) {
-        throw new Error('语速设置尚未核对保存，请重试。')
-      }
-    }
-  }
-  return deviceStore.save(value)
-}
-export const taroCommunicationPreferencesStore = { load, save, update(value: Partial<CommunicationPreferences>) { return save({ ...load(), ...value }) } }
+export const taroCommunicationPreferencesStore = createCareDevicePreferencesStore({
+  storage: {
+    getItem: key => {
+      const value = Taro.getStorageSync(careScopedKey(key))
+      return value === undefined || value === null || typeof value === 'string' ? value : JSON.stringify(value)
+    },
+    setItem: (key, value) => Taro.setStorageSync(careScopedKey(key), value)
+  },
+  scoped: () => Boolean(currentCareContext()?.profileId),
+  scope: () => careScopedKey(''),
+  defaults: () => Taro.getStorageSync(careScopedKey('care-patient-defaults')) || {},
+  // Do not migrate or clear a request that was explicitly queued by an older
+  // build. New easy-settings changes are device overrides, not shared writes.
+  legacySpeechPending: () => Boolean(Taro.getStorageSync(careScopedKey('care-pending-speechRate')))
+})

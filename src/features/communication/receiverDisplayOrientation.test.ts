@@ -1,12 +1,24 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 function readProjectFile(relativePath: string) {
   return readFileSync(join(process.cwd(), relativePath), 'utf8')
 }
 
 describe('receiver display orientation contract', () => {
+  test('enables the application-level iPad rotation capability', async () => {
+    vi.stubGlobal('defineAppConfig', (config: unknown) => config)
+    try {
+      const { default: config } = await import('../../app.config')
+      expect(config.resizable).toBe(true)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+  test.each(['src/pages/index/index.config.ts', 'src/packages/caregiver/pages/patient/index.config.ts', 'src/packages/management/pages/index/index.config.ts'])('expression/management configuration allows rotation: %s', path => {
+    expect(readProjectFile(path)).toContain("pageOrientation: 'auto'")
+  })
   test('enables live page rotation and uses a native two-axis scroll view', () => {
     const pageConfig = readProjectFile(
       'src/packages/caregiver/pages/receiver/index.config.ts'

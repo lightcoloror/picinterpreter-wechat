@@ -226,7 +226,7 @@ export default function CommunicationSettingsPanel({
         <Text className='section-heading__index'>设</Text>
         <View>
           <Text className='section-heading__title'>照护设置</Text>
-          <Text className='section-heading__hint'>显示偏好只保存在当前设备</Text>
+          <Text className='section-heading__hint'>此处显示和语速设置仅保存到本机，不修改共享档案默认值。</Text>
         </View>
       </View>
 

@@ -1,3 +1,15 @@
+declare module '@cboard-communication-core/careDevicePreferences' {
+  import type { CommunicationPreferences } from '@cboard-communication-core/communicationPreferences'
+  export const CARE_DEVICE_OVERRIDES_KEY: string
+  export function createCareDevicePreferencesStore(options: {
+    storage: { getItem(key: string): unknown; setItem(key: string, value: string): unknown }
+    defaults?: () => Record<string, unknown>
+    legacy?: () => Record<string, unknown>
+    legacySpeechPending?: () => boolean
+    scoped?: () => boolean
+    scope?: () => string
+  }): { load(): CommunicationPreferences; save(value: CommunicationPreferences): CommunicationPreferences; update(changes: Partial<CommunicationPreferences>): CommunicationPreferences }
+}
 declare module '@cboard-communication-core/pictogramAttribution' {
   export interface PictogramAttribution {
     provider: string
@@ -1127,6 +1139,7 @@ declare module '@cboard-communication-core/missingTokens' {
   ): ReceiverReviewItem[]
 }
 declare module '@cboard-communication-core/repository' {
+  export function assertCommunicationRepositorySchemaReadable(storage: { getItem(key: string): string | null | undefined }): void
   export const COMMUNICATION_STORAGE_KEYS: Readonly<Record<string, string>>
   import type {
     ConversationContext,

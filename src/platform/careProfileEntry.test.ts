@@ -4,7 +4,7 @@ import { enterCareProfile } from './careProfileEntry'
 const profile = { id: 'patient-a', familyId: 'family-a', relationship: { role: 'relative', defaultMode: 'receiver' } }
 function fixture() {
   let active = true
-  const ports = { current: () => active, request: vi.fn(async () => ({})), newId: vi.fn(async () => 'operation'),
+  const ports = { current: () => active, request: vi.fn(async () => ({ selectionVersion: 0 })), newId: vi.fn(async () => 'operation'),
     select: vi.fn(), needsRole: vi.fn(), start: vi.fn(), sync: vi.fn(async () => undefined), navigate: vi.fn(async () => undefined) }
   return { ports, invalidate: () => { active = false } }
 }

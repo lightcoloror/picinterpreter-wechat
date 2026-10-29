@@ -13,14 +13,16 @@ export default function LaunchPage() {
   const [profiles, setProfiles] = useState<CareSelection[]>([])
   const generation = useRef(0)
   const entryAccount = useRef<string | undefined>()
+  const entryToken = useRef<string | undefined>()
   const currentRun = () => {
     const run = generation.current
     const accountId = entryAccount.current
-    return () => generation.current === run && runtime.identity()?.id === accountId
+    const token = entryToken.current
+    return () => generation.current === run && runtime.identity()?.id === accountId && runtime.identity()?.token === token
   }
   useDidHide(() => { generation.current += 1 })
 
-  async function enter(profile: CareSelection, role?: string) {
+  async function enter(profile: CareSelection, role?: string, options = {}) {
     if (!currentRun()()) return
     generation.current += 1
     const current = currentRun()
@@ -30,7 +32,7 @@ export default function LaunchPage() {
       needsRole: value => { setProfiles([value]); setNotice('选择此账号的使用身份') },
       navigate: value => Taro.redirectTo({ url: value.relationship?.defaultMode === 'receiver'
         ? '/packages/caregiver/pages/receiver/index' : '/packages/caregiver/pages/patient/index' })
-    }, role) } catch (error: any) {
+    }, role, options) } catch (error: any) {
       if (current()) setNotice(error.message || '暂时无法进入患者档案')
     }
   }
@@ -38,6 +40,7 @@ export default function LaunchPage() {
   useDidShow(() => {
     generation.current += 1
     entryAccount.current = runtime.identity()?.id
+    entryToken.current = runtime.identity()?.token
     const current = currentRun()
     setProfiles([])
     if (runtime.enabled && !runtime.identity() && currentCareContext()?.accountId === 'offline') {
@@ -54,7 +57,7 @@ export default function LaunchPage() {
           const [list, context] = await Promise.all([runtime.request('/care/profiles', 'GET'), runtime.request('/care/context', 'GET')]) as [CareSelection[], { selectedProfileId: string | null }]
           if (!current()) return
           const selected = list.find(p => p.id === context.selectedProfileId)
-          if (selected?.relationship) await enter(selected)
+          if (selected?.relationship) await enter(selected, undefined, { persist: false })
           else { setProfiles(list); setNotice(list.length ? '选择要使用的患者档案' : '请从设置创建档案或接受家庭邀请') }
         } catch (error: any) {
           if (!current()) return

@@ -7,22 +7,27 @@ import { apiBaseUrlFor } from '../config/runtimeCapabilities'
 import { wechatSpeechPort } from './taroSpeechPort'
 import { saveCareSelection, type CareSelection } from './taroCareContext'
 import { careBuiltinImages } from './taroCareBuiltinImages'
+import { persistCareProfileChoice, type CareChoiceOptions } from './careProfileChoice'
 
 export const identity = () => {
   const s = taroCboardSessionStore.load()
   return s?.user.id ? { id: s.user.id, token: s.token } : null
 }
 
-function requestError(status: number, data: unknown) {
+function requestError(status: number, data: any) {
+  const code = typeof data?.code === 'string' ? data.code : undefined
   const message = status === 401
     ? '登录已失效，请重新登录。'
     : status === 403
       ? '当前账号无权访问此患者资料。'
+      : status === 409 && code === 'CARE_CONTEXT_CHANGED'
+        ? '档案选择已更新，请重新查看后再选择。'
       : status === 503
         ? '云端服务暂时不可用，请稍后重试。'
         : '连接失败'
-  return Object.assign(new Error(message), { status, data })
+  return Object.assign(new Error(message), { status, data, code })
 }
+let selectionGeneration = 0
 export const runtime = {
   resolveBuiltinImage: careBuiltinImages.resolve,
   enabled: process.env.TARO_APP_CARE_COLLABORATION === 'true',
@@ -39,14 +44,19 @@ export const runtime = {
       Taro.eventCenter.trigger('care-ai-context-changed')
     }
   },
-  async selectProfile(profile: CareSelection) {
+  async selectProfile(profile: CareSelection, isCurrent = () => true, options: CareChoiceOptions = {}) {
     const who = identity()
     const accountId = who?.id
     if (!accountId) throw Object.assign(new Error('请先登录'), { status: 401 })
-    try { await runtime.request('/care/context', 'PUT', { profileId: profile.id }) }
-    catch (error: any) { if (error.status) throw error }
-    if (identity()?.id !== accountId || identity()?.token !== who?.token) throw Object.assign(new Error('账号已切换，请重新选择档案'), { status: 401 })
+    const run = ++selectionGeneration
+    const current = () => {
+      if (identity()?.id !== accountId || identity()?.token !== who?.token) throw Object.assign(new Error('账号已切换，请重新选择档案'), { status: 401 })
+      return run === selectionGeneration && isCurrent()
+    }
+    if (!await persistCareProfileChoice(profile.id, { current, request: runtime.request }, options)) return false
+    if (!current()) return false
     saveCareSelection(profile)
+    return true
   },
   async saveArchive(bytes: Uint8Array) {
     const path = `${Taro.env.USER_DATA_PATH}/tuyujia-device-${Date.now()}.zip`

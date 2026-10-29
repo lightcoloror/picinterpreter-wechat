@@ -1,4 +1,5 @@
 import type { CareSelection } from './taroCareContext'
+import { persistCareProfileChoice, type CareChoiceOptions } from './careProfileChoice'
 
 interface EntryPorts {
   current(): boolean
@@ -12,7 +13,7 @@ interface EntryPorts {
 }
 
 // A completed request belongs to the account and page generation that started it.
-export async function enterCareProfile(profile: CareSelection, ports: EntryPorts, role?: string) {
+export async function enterCareProfile(profile: CareSelection, ports: EntryPorts, role?: string, options: CareChoiceOptions = {}) {
   if (!ports.current()) return
   if (role) {
     const operationId = await ports.newId()
@@ -24,8 +25,7 @@ export async function enterCareProfile(profile: CareSelection, ports: EntryPorts
     profile = { ...profile, relationship: { role, defaultMode: role === 'patient' ? 'expression' : 'receiver' } }
   }
   if (!profile.relationship) { ports.needsRole(profile); return }
-  try { await ports.request('/care/context', 'PUT', { profileId: profile.id }) }
-  catch (error: any) { if (error.status) throw error }
+  if (!await persistCareProfileChoice(profile.id, ports, options)) return
   if (!ports.current()) return
   ports.select(profile)
   ports.start()

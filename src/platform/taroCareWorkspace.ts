@@ -196,7 +196,9 @@ export async function synchronizeCareWorkspace(options: { localOnly?: boolean; a
       if (order) {
         for (const [id, tileIds] of Object.entries(JSON.parse(String(order)))) {
           const board = engine.view().resources[`board:${id}`]
-          if (board && !board.deleted && JSON.stringify(board.value.tileIds) !== JSON.stringify(tileIds)) await engine.edit('board', id, { ...board.value, tileIds })
+          // A device popularity/manual ordering preference cannot move fixed
+          // cells or silently turn their dense ID list into a different order.
+          if (board && !board.deleted && !board.value.layout?.cells && JSON.stringify(board.value.tileIds) !== JSON.stringify(tileIds)) await engine.edit('board', id, { ...board.value, tileIds })
         }
         if (Taro.getStorageSync(orderKey) === order) Taro.removeStorageSync(orderKey)
       }

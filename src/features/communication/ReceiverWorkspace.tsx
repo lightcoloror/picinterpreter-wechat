@@ -310,6 +310,7 @@ export default function ReceiverWorkspace({
   })
   useEffect(() => {
     invalidateTextAi()
+    cancelHiddenRecognition()
     assistanceRef.current = null
     setAssistanceRequest(null)
   }, [textAi.contextKey])

@@ -115,7 +115,7 @@ declare module '@cboard-communication-core/dto' {
 
   export interface BoardDTO {
     dtoType: 'BoardDTO'
-    version: 1
+    version: 1 | 2
     id: string
     name: string
     nameKey: string

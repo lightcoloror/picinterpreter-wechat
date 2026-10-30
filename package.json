@@ -43,6 +43,7 @@
     "create:release-evidence": "node ./scripts/create-release-evidence.mjs",
     "check:local-release": "npm run typecheck && npm run lint && npm test && npm run check:boundary && npm run build:weapp && npm run create:release-evidence",
     "test:e2e:weapp": "node ./scripts/weapp-skill-smoke.mjs",
+    "test:e2e:phrase-flow": "node ./scripts/weapp-phrase-flow.mjs",
     "test:e2e:storage-adapter": "node --test ./scripts/weapp-e2e-storage.test.mjs",
     "test:e2e:weapp:receiver-retention": "set WEAPP_E2E_RECEIVER_RETENTION_ONLY=1&& node ./scripts/weapp-skill-smoke.mjs",
     "test:e2e:weapp:restore-storage": "node ./scripts/weapp-skill-smoke.mjs --restore-storage-recovery",

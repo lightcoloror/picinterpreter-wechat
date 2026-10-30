@@ -1,0 +1,130 @@
+[
+  {
+    "contractVersion": 1,
+    "id": "readability-1",
+    "sentence": "我想喝水。",
+    "output": [
+      {
+        "id": "water",
+        "label": "水",
+        "image": ""
+      }
+    ],
+    "usageCount": 8,
+    "createdAt": 1700000000000,
+    "lastUsedAt": 1700000000000,
+    "updatedAt": 1700000000000,
+    "lifeContext": "外出"
+  },
+  {
+    "contractVersion": 1,
+    "id": "readability-2",
+    "sentence": "请帮我把窗户打开一点。",
+    "output": [],
+    "usageCount": 7,
+    "createdAt": 1700000000001,
+    "lastUsedAt": 1700000000001,
+    "updatedAt": 1700000000001,
+    "lifeContext": "日常交流"
+  },
+  {
+    "contractVersion": 1,
+    "id": "readability-3",
+    "sentence": "我想休息。",
+    "output": [],
+    "usageCount": 6,
+    "createdAt": 1700000000002,
+    "lastUsedAt": 1700000000002,
+    "updatedAt": 1700000000002,
+    "lifeContext": "外出"
+  },
+  {
+    "contractVersion": 1,
+    "id": "readability-4",
+    "sentence": "请慢一点说。",
+    "output": [
+      {
+        "id": "long-label",
+        "label": "请慢一点说，让我有时间理解完整的意思",
+        "image": ""
+      }
+    ],
+    "usageCount": 5,
+    "createdAt": 1700000000003,
+    "lastUsedAt": 1700000000003,
+    "updatedAt": 1700000000003,
+    "lifeContext": "日常交流"
+  },
+  {
+    "contractVersion": 1,
+    "id": "readability-5",
+    "sentence": "我想喝水，再喝一杯水。",
+    "output": [
+      {
+        "id": "water",
+        "label": "水",
+        "image": ""
+      },
+      {
+        "id": "water",
+        "label": "水",
+        "image": ""
+      }
+    ],
+    "usageCount": 4,
+    "createdAt": 1700000000004,
+    "lastUsedAt": 1700000000004,
+    "updatedAt": 1700000000004,
+    "lifeContext": "外出"
+  },
+  {
+    "contractVersion": 1,
+    "id": "readability-6",
+    "sentence": "我想找小明和小明一起散步。",
+    "output": [
+      {
+        "id": "person-a",
+        "label": "小明",
+        "image": "/readability-fixtures/circle.png"
+      },
+      {
+        "id": "person-b",
+        "label": "小明",
+        "image": "/readability-fixtures/square.png"
+      }
+    ],
+    "usageCount": 3,
+    "createdAt": 1700000000005,
+    "lastUsedAt": 1700000000005,
+    "updatedAt": 1700000000005,
+    "lifeContext": "日常交流"
+  },
+  {
+    "contractVersion": 1,
+    "id": "readability-7",
+    "sentence": "这是第七条，请帮我拿外套。",
+    "output": [],
+    "usageCount": 2,
+    "createdAt": 1700000000006,
+    "lastUsedAt": 1700000000006,
+    "updatedAt": 1700000000006,
+    "lifeContext": "外出"
+  },
+  {
+    "contractVersion": 1,
+    "id": "readability-8",
+    "sentence": "今天吃完午饭以后，我想先在窗边休息一会儿，再请你陪我去楼下花园慢慢散步。如果外面下雨，我们就在走廊里走一走，等我准备好了再出发。",
+    "output": [
+      {
+        "id": "missing",
+        "label": "吃完午饭以后先在窗边休息一会儿",
+        "image": ""
+      }
+    ],
+    "usageCount": 1,
+    "createdAt": 1700000000007,
+    "lastUsedAt": 1700000000007,
+    "updatedAt": 1700000000007,
+    "lifeContext": "日常交流"
+  }
+]
